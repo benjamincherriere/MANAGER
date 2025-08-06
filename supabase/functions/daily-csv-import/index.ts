@@ -1,0 +1,215 @@
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+interface ImportConfig {
+  csv_url: string;
+  enabled: boolean;
+  last_import?: string;
+  import_count?: number;
+}
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Récupérer la configuration d'import depuis les métadonnées utilisateur
+    const { data: configs, error: configError } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('setting_key', 'daily_csv_import')
+      .limit(1);
+
+    if (configError && !configError.message.includes('does not exist')) {
+      throw new Error(`Erreur configuration: ${configError.message}`);
+    }
+
+    // Si pas de configuration ou table n'existe pas, créer la table et une config par défaut
+    if (!configs || configs.length === 0) {
+      // Créer la table si elle n'existe pas
+      await supabase.rpc('create_user_settings_table');
+      
+      console.log('Aucune configuration d\'import trouvée, arrêt du processus');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'Aucune configuration d\'import configurée' 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const config: ImportConfig = configs[0].setting_value;
+
+    if (!config.enabled || !config.csv_url) {
+      console.log('Import quotidien désactivé ou URL manquante');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'Import quotidien désactivé ou URL non configurée' 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Début de l'import quotidien depuis: ${config.csv_url}`);
+
+    // Télécharger le CSV depuis l'URL
+    const response = await fetch(config.csv_url, {
+      headers: {
+        'Accept': 'text/csv, text/plain, application/csv',
+        'User-Agent': 'Plus-de-Bulles-Daily-Import/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erreur HTTP ${response.status}: Impossible d'accéder à l'URL`);
+    }
+
+    const csvText = await response.text();
+    
+    if (!csvText || csvText.trim() === '') {
+      throw new Error('Le fichier CSV semble vide');
+    }
+
+    // Parser le CSV
+    const lines = csvText.split('\n').filter(line => line.trim());
+    
+    if (lines.length <= 1) {
+      throw new Error('Le fichier CSV doit contenir au moins une ligne de données');
+    }
+
+    const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
+    
+    // Trouver les index des colonnes
+    const dateIndex = headers.findIndex(h => h.includes('date'));
+    const revenueIndex = headers.findIndex(h => 
+      h.includes('revenue') || h.includes('chiffre') || h.includes('ca')
+    );
+    const costsIndex = headers.findIndex(h => 
+      h.includes('costs') || h.includes('cout') || h.includes('charge')
+    );
+
+    if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
+      throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
+    }
+
+    // Parser les données
+    const dataToInsert = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const columns = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
+        
+        if (columns.length < 3) continue;
+
+        const dateStr = columns[dateIndex];
+        const revenueStr = columns[revenueIndex];
+        const costsStr = columns[costsIndex];
+
+        // Valider et parser la date
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) {
+          console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+          errorCount++;
+          continue;
+        }
+
+        // Valider et parser les montants
+        const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
+        const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+
+        if (isNaN(revenue) || isNaN(costs) || revenue < 0 || costs < 0) {
+          console.warn(`Ligne ${i + 1}: Montants invalides`);
+          errorCount++;
+          continue;
+        }
+
+        dataToInsert.push({
+          date: date.toISOString().split('T')[0],
+          revenue,
+          costs
+        });
+        successCount++;
+      } catch (error) {
+        console.warn(`Erreur ligne ${i + 1}:`, error);
+        errorCount++;
+      }
+    }
+
+    if (dataToInsert.length === 0) {
+      throw new Error('Aucune donnée valide trouvée dans le fichier CSV');
+    }
+
+    // Insérer en base de données
+    const { error: insertError } = await supabase
+      .from('financial_data')
+      .upsert(dataToInsert, { 
+        onConflict: 'date',
+        ignoreDuplicates: false 
+      });
+
+    if (insertError) {
+      throw new Error(`Erreur insertion: ${insertError.message}`);
+    }
+
+    // Mettre à jour la configuration avec la dernière date d'import
+    const updatedConfig = {
+      ...config,
+      last_import: new Date().toISOString(),
+      import_count: (config.import_count || 0) + 1
+    };
+
+    await supabase
+      .from('user_settings')
+      .update({ setting_value: updatedConfig })
+      .eq('setting_key', 'daily_csv_import');
+
+    const result = {
+      success: true,
+      message: `Import quotidien réussi: ${successCount} lignes importées`,
+      stats: {
+        imported: successCount,
+        errors: errorCount,
+        total: lines.length - 1,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    console.log('Import quotidien terminé:', result);
+
+    return new Response(
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Erreur import quotidien:', error);
+    
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Erreur interne',
+        timestamp: new Date().toISOString()
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
+  }
+});

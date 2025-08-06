@@ -46,9 +46,18 @@ const FinanceModule: React.FC = () => {
   } | null>(null);
   const [analyzingData, setAnalyzingData] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [dailyImportConfig, setDailyImportConfig] = useState({
+    enabled: false,
+    csv_url: '',
+    last_import: null as string | null,
+    import_count: 0
+  });
+  const [showDailyImportModal, setShowDailyImportModal] = useState(false);
+  const [savingDailyConfig, setSavingDailyConfig] = useState(false);
 
   useEffect(() => {
     loadFinancialData();
+    loadDailyImportConfig();
   }, []);
 
   const loadFinancialData = async () => {
@@ -263,6 +272,81 @@ const FinanceModule: React.FC = () => {
     }
   };
 
+  const loadDailyImportConfig = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('setting_key', 'daily_csv_import')
+        .limit(1);
+
+      if (error && !error.message.includes('does not exist')) {
+        console.error('Erreur chargement config:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        setDailyImportConfig(data[0].setting_value);
+      }
+    } catch (error) {
+      console.error('Erreur chargement config daily import:', error);
+    }
+  };
+
+  const saveDailyImportConfig = async () => {
+    setSavingDailyConfig(true);
+    try {
+      // Créer la table user_settings si elle n'existe pas
+      await supabase.rpc('create_user_settings_table_if_not_exists');
+
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({
+          setting_key: 'daily_csv_import',
+          setting_value: dailyImportConfig
+        }, {
+          onConflict: 'setting_key'
+        });
+
+      if (error) {
+        throw new Error(`Erreur sauvegarde: ${error.message}`);
+      }
+
+      setShowDailyImportModal(false);
+      alert('✅ Configuration de l\'import quotidien sauvegardée !');
+    } catch (error) {
+      console.error('Erreur sauvegarde config:', error);
+      alert(`❌ Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    } finally {
+      setSavingDailyConfig(false);
+    }
+  };
+
+  const testDailyImport = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/daily-csv-import`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`✅ Test réussi !\n\n${result.message}\n\nImportées: ${result.stats?.imported || 0}\nErreurs: ${result.stats?.errors || 0}`);
+        await loadFinancialData();
+        await loadDailyImportConfig();
+      } else {
+        alert(`⚠️ ${result.message || result.error}`);
+      }
+    } catch (error) {
+      console.error('Erreur test import:', error);
+      alert(`❌ Erreur lors du test: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    }
+  };
+
   const generateAnalysis = async (type: 'daily' | 'weekly' | 'monthly', sendEmail = false) => {
     if (!emailSettings.openaiApiKey) {
       alert('Veuillez configurer votre clé API OpenAI dans les paramètres');
@@ -374,6 +458,13 @@ const FinanceModule: React.FC = () => {
           >
             <Upload className="h-4 w-4 mr-2" />
             {importingFromUrl ? 'Import...' : 'Importer depuis URL'}
+          </button>
+          <button
+            onClick={() => setShowDailyImportModal(true)}
+            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Import Quotidien
           </button>
         </div>
       </div>
@@ -847,6 +938,106 @@ const FinanceModule: React.FC = () => {
                   'Importer'
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Configuration Import Quotidien */}
+      {showDailyImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Configuration Import Quotidien</h3>
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="enableDailyImport"
+                  checked={dailyImportConfig.enabled}
+                  onChange={(e) => setDailyImportConfig({
+                    ...dailyImportConfig,
+                    enabled: e.target.checked
+                  })}
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <label htmlFor="enableDailyImport" className="ml-2 text-sm font-medium text-gray-700">
+                  Activer l'import quotidien à 5h du matin
+                </label>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  URL du fichier CSV
+                </label>
+                <input
+                  type="url"
+                  value={dailyImportConfig.csv_url}
+                  onChange={(e) => setDailyImportConfig({
+                    ...dailyImportConfig,
+                    csv_url: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="https://example.com/daily-data.csv"
+                  disabled={!dailyImportConfig.enabled}
+                />
+              </div>
+
+              {dailyImportConfig.last_import && (
+                <div className="bg-green-50 border border-green-200 rounded p-3">
+                  <p className="text-sm text-green-800">
+                    <strong>Dernier import :</strong> {new Date(dailyImportConfig.last_import).toLocaleString('fr-FR')}
+                  </p>
+                  <p className="text-sm text-green-700">
+                    <strong>Nombre d'imports :</strong> {dailyImportConfig.import_count}
+                  </p>
+                </div>
+              )}
+
+              <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">ℹ️ Comment ça marche :</h4>
+                <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                  <li>L'import se déclenche automatiquement chaque jour à 5h du matin</li>
+                  <li>Le système télécharge le CSV depuis l'URL configurée</li>
+                  <li>Les données existantes sont mises à jour automatiquement</li>
+                  <li>Un log est conservé de chaque import</li>
+                </ul>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                <h4 className="text-sm font-medium text-yellow-800 mb-2">⚠️ Prérequis :</h4>
+                <ul className="text-xs text-yellow-700 space-y-1 list-disc list-inside">
+                  <li>L'URL doit être accessible publiquement 24h/24</li>
+                  <li>Le fichier doit respecter le format CSV standard</li>
+                  <li>Colonnes requises : date, revenue, costs</li>
+                  <li>Le serveur doit autoriser les requêtes automatisées</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="flex justify-between pt-4">
+              <button
+                onClick={testDailyImport}
+                disabled={!dailyImportConfig.enabled || !dailyImportConfig.csv_url}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                🧪 Tester maintenant
+              </button>
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDailyImportModal(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={saveDailyImportConfig}
+                  disabled={savingDailyConfig}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {savingDailyConfig ? 'Sauvegarde...' : 'Sauvegarder'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
