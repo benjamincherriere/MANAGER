@@ -99,15 +99,15 @@ Deno.serve(async (req) => {
     const headers = lines[0].toLowerCase().split(/[,;]/).map(h => h.trim().replace(/"/g, ''));
     
     // Détecter les colonnes selon votre format
-    const channelIndex = headers.findIndex(h => h.includes('chanel') || h.includes('channel'));
-    const orderNumberIndex = headers.findIndex(h => h.includes('numero') && h.includes('commande'));
+    const channelIndex = headers.findIndex(h => h.includes('chanel') || h.includes('channel') || h === 'chanel');
+    const orderNumberIndex = headers.findIndex(h => h.includes('numero') || h.includes('commande') || h.includes('numero de commande'));
     const dateIndex = headers.findIndex(h => h.includes('date'));
-    const productRefIndex = headers.findIndex(h => h.includes('ref') && h.includes('produit'));
-    const productNameIndex = headers.findIndex(h => h.includes('nom') && h.includes('produit'));
-    const brandIndex = headers.findIndex(h => h.includes('marque'));
+    const productRefIndex = headers.findIndex(h => h.includes('ref produit') || (h.includes('ref') && h.includes('produit')));
+    const productNameIndex = headers.findIndex(h => h.includes('nom produit') || (h.includes('nom') && h.includes('produit')));
+    const brandIndex = headers.findIndex(h => h.includes('marque prod') || h.includes('marque'));
     const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('quantit'));
-    const salePriceIndex = headers.findIndex(h => h.includes('prix') && h.includes('vente'));
-    const purchasePriceIndex = headers.findIndex(h => h.includes('prix') && h.includes('achat'));
+    const salePriceIndex = headers.findIndex(h => h.includes('prix de vente') || (h.includes('prix') && h.includes('vente')));
+    const purchasePriceIndex = headers.findIndex(h => h.includes('prix achat') || (h.includes('prix') && h.includes('achat')));
     const discountIndex = headers.findIndex(h => h.includes('remise'));
     const cashbackIndex = headers.findIndex(h => h.includes('cagnotte'));
     
@@ -117,9 +117,29 @@ Deno.serve(async (req) => {
     let errorCount = 0;
 
     // Vérifier les colonnes obligatoires
-    if (dateIndex === -1 || quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
-      throw new Error('Colonnes manquantes. Colonnes requises: Date, quantity, prix de vente, prix achat');
+    if (dateIndex === -1) {
+      throw new Error('Colonne Date manquante');
     }
+    if (quantityIndex === -1) {
+      throw new Error('Colonne quantity manquante');
+    }
+    if (salePriceIndex === -1) {
+      throw new Error('Colonne prix de vente manquante');
+    }
+    if (purchasePriceIndex === -1) {
+      throw new Error('Colonne prix achat manquante');
+    }
+
+    console.log('Colonnes détectées:', {
+      channel: channelIndex,
+      orderNumber: orderNumberIndex,
+      date: dateIndex,
+      quantity: quantityIndex,
+      salePrice: salePriceIndex,
+      purchasePrice: purchasePriceIndex,
+      discount: discountIndex,
+      cashback: cashbackIndex
+    });
 
     // Traiter chaque ligne de commande
     const ordersByDate = new Map();
@@ -127,17 +147,23 @@ Deno.serve(async (req) => {
 
     for (let i = 1; i < lines.length; i++) {
       try {
-        const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+        const columns = lines[i].split(/\t|,|;/).map(c => c.trim().replace(/"/g, ''));
         
-        if (columns.length < headers.length) continue;
+        if (columns.length < Math.max(dateIndex, quantityIndex, salePriceIndex, purchasePriceIndex) + 1) {
+          console.warn(`Ligne ${i + 1}: Pas assez de colonnes (${columns.length} vs ${headers.length} attendues)`);
+          errorCount++;
+          continue;
+        }
 
         // Extraire les données de la ligne
         const channel = channelIndex !== -1 ? columns[channelIndex] : 'Non spécifié';
         const orderNumber = orderNumberIndex !== -1 ? columns[orderNumberIndex] : '';
         const dateStr = columns[dateIndex];
-        const quantity = parseFloat(columns[quantityIndex]) || 0;
-        const salePrice = parseFloat(columns[salePriceIndex]) || 0;
-        const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
+        
+        // Parser les nombres en gérant les valeurs vides
+        const quantity = columns[quantityIndex] ? parseFloat(columns[quantityIndex].replace(/[^\d.-]/g, '')) : 0;
+        const salePrice = columns[salePriceIndex] ? parseFloat(columns[salePriceIndex].replace(/[^\d.-]/g, '')) : 0;
+        const purchasePrice = columns[purchasePriceIndex] ? parseFloat(columns[purchasePriceIndex].replace(/[^\d.-]/g, '')) : 0;
         
         // Traiter les remises et cagnottes
         let discount = 0;
@@ -152,7 +178,7 @@ Deno.serve(async (req) => {
         }
 
         // Valider les données
-        if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+        if (quantity <= 0 || salePrice <= 0 || purchasePrice < 0) {
           errorCount++;
           continue;
         }
@@ -160,9 +186,19 @@ Deno.serve(async (req) => {
         // Valider et parser la date
         const parsedDate = new Date(dateStr);
         if (isNaN(parsedDate.getTime())) {
-          console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
-          errorCount++;
+          // Essayer de parser différents formats de date
+          const altFormats = [
+            dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1'), // DD/MM/YYYY -> YYYY-MM-DD
+            dateStr.replace(/(\d{4})\/(\d{2})\/(\d{2})/, '$1-$2-$3')   // YYYY/MM/DD -> YYYY-MM-DD
+          ];
+          
+          const altDate = new Date(altFormats.find(f => !isNaN(new Date(f).getTime())) || dateStr);
+          if (isNaN(altDate.getTime())) {
+            console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+            errorCount++;
           continue;
+          }
+          parsedDate = altDate;
         }
         const dateToUse = parsedDate.toISOString().split('T')[0];
 
