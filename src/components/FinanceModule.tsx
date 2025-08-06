@@ -30,6 +30,9 @@ const FinanceModule: React.FC = () => {
   const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [importingFromUrl, setImportingFromUrl] = useState(false);
+  const [csvUrl, setCsvUrl] = useState('');
+  const [showUrlModal, setShowUrlModal] = useState(false);
   const [emailSettings, setEmailSettings] = useState({
     email: '',
     dailyReports: true,
@@ -122,6 +125,141 @@ const FinanceModule: React.FC = () => {
       console.error('Erreur lors du traitement du fichier:', error);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleUrlImport = async () => {
+    if (!csvUrl.trim()) {
+      alert('Veuillez saisir une URL valide');
+      return;
+    }
+
+    setImportingFromUrl(true);
+    try {
+      // Télécharger le CSV depuis l'URL
+      const response = await fetch(csvUrl, {
+        mode: 'cors',
+        headers: {
+          'Accept': 'text/csv, text/plain, application/csv'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP ${response.status}: Impossible d'accéder à l'URL`);
+      }
+
+      const csvText = await response.text();
+      
+      if (!csvText || csvText.trim() === '') {
+        throw new Error('Le fichier CSV semble vide');
+      }
+
+      // Parser le CSV
+      const lines = csvText.split('\n').filter(line => line.trim());
+      
+      if (lines.length <= 1) {
+        throw new Error('Le fichier CSV doit contenir au moins une ligne de données en plus de l\'en-tête');
+      }
+
+      const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
+      
+      // Vérifier les colonnes requises
+      const requiredColumns = ['date', 'revenue', 'costs'];
+      const missingColumns = requiredColumns.filter(col => 
+        !headers.some(h => h.includes(col) || h.includes(col.replace('revenue', 'chiffre')) || h.includes(col.replace('costs', 'cout')))
+      );
+
+      if (missingColumns.length > 0) {
+        throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}. Format attendu: date, revenue, costs`);
+      }
+
+      // Trouver les index des colonnes
+      const dateIndex = headers.findIndex(h => h.includes('date'));
+      const revenueIndex = headers.findIndex(h => h.includes('revenue') || h.includes('chiffre') || h.includes('ca'));
+      const costsIndex = headers.findIndex(h => h.includes('costs') || h.includes('cout') || h.includes('charge'));
+
+      // Parser les données
+      const dataToInsert = [];
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const columns = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
+          
+          if (columns.length < 3) continue;
+
+          const dateStr = columns[dateIndex];
+          const revenueStr = columns[revenueIndex];
+          const costsStr = columns[costsIndex];
+
+          // Valider et parser la date
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) {
+            console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+            errorCount++;
+            continue;
+          }
+
+          // Valider et parser les montants
+          const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
+          const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+
+          if (isNaN(revenue) || isNaN(costs)) {
+            console.warn(`Ligne ${i + 1}: Montants invalides (revenue: "${revenueStr}", costs: "${costsStr}")`);
+            errorCount++;
+            continue;
+          }
+
+          if (revenue < 0 || costs < 0) {
+            console.warn(`Ligne ${i + 1}: Montants négatifs non autorisés`);
+            errorCount++;
+            continue;
+          }
+
+          dataToInsert.push({
+            date: date.toISOString().split('T')[0],
+            revenue,
+            costs
+          });
+          successCount++;
+        } catch (error) {
+          console.warn(`Erreur ligne ${i + 1}:`, error);
+          errorCount++;
+        }
+      }
+
+      if (dataToInsert.length === 0) {
+        throw new Error('Aucune donnée valide trouvée dans le fichier CSV');
+      }
+
+      // Insérer en base de données
+      const { data, error } = await supabase
+        .from('financial_data')
+        .upsert(dataToInsert, { 
+          onConflict: 'date',
+          ignoreDuplicates: false 
+        })
+        .select();
+
+      if (error) {
+        throw new Error(`Erreur base de données: ${error.message}`);
+      }
+
+      // Recharger les données
+      await loadFinancialData();
+      
+      // Fermer le modal et afficher le résultat
+      setShowUrlModal(false);
+      setCsvUrl('');
+      
+      alert(`✅ Import réussi !\n\n📊 ${successCount} lignes importées\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs)` : ''}\n\n💡 Les données existantes ont été mises à jour.`);
+
+    } catch (error) {
+      console.error('Erreur import URL:', error);
+      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Vérifiez que l'URL est accessible et que le fichier respecte le format CSV attendu.`);
+    } finally {
+      setImportingFromUrl(false);
     }
   };
 
@@ -229,6 +367,14 @@ const FinanceModule: React.FC = () => {
               disabled={uploading}
             />
           </label>
+          <button
+            onClick={() => setShowUrlModal(true)}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            disabled={importingFromUrl}
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            {importingFromUrl ? 'Import...' : 'Importer depuis URL'}
+          </button>
         </div>
       </div>
 
@@ -614,6 +760,92 @@ const FinanceModule: React.FC = () => {
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Sauvegarder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Import URL */}
+      {showUrlModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Importer CSV depuis une URL</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  URL du fichier CSV
+                </label>
+                <input
+                  type="url"
+                  value={csvUrl}
+                  onChange={(e) => setCsvUrl(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="https://example.com/data.csv"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  L'URL doit pointer vers un fichier CSV accessible publiquement
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">Format CSV attendu :</h4>
+                <div className="text-xs text-blue-700 space-y-1">
+                  <p><strong>Colonnes requises :</strong></p>
+                  <ul className="list-disc list-inside ml-2">
+                    <li><code>date</code> : Format YYYY-MM-DD</li>
+                    <li><code>revenue</code> : Chiffre d'affaires</li>
+                    <li><code>costs</code> : Coûts</li>
+                  </ul>
+                  <p className="mt-2"><strong>Exemple :</strong></p>
+                  <code className="text-xs bg-white px-2 py-1 rounded border">
+                    date,revenue,costs<br/>
+                    2024-01-15,1250.50,890.25
+                  </code>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                <div className="flex items-start">
+                  <AlertCircle className="h-4 w-4 text-yellow-600 mr-2 mt-0.5" />
+                  <div className="text-xs text-yellow-700">
+                    <p><strong>Conseils :</strong></p>
+                    <ul className="list-disc list-inside ml-2 space-y-1">
+                      <li>L'URL doit être accessible sans authentification</li>
+                      <li>Le serveur doit autoriser les requêtes CORS</li>
+                      <li>Les données existantes seront mises à jour</li>
+                      <li>Les lignes avec erreurs seront ignorées</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUrlModal(false);
+                  setCsvUrl('');
+                }}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                disabled={importingFromUrl}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleUrlImport}
+                disabled={importingFromUrl || !csvUrl.trim()}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {importingFromUrl ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></div>
+                    Import en cours...
+                  </>
+                ) : (
+                  'Importer'
+                )}
               </button>
             </div>
           </div>
