@@ -32,6 +32,13 @@ const LoginForm: React.FC = () => {
     setLoading(true);
     setError(null);
 
+    // Vérifier la configuration Supabase
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      setError('Configuration Supabase manquante. Vérifiez votre fichier .env');
+      setLoading(false);
+      return;
+    }
+
     try {
       // Si c'est le compte de démo, s'assurer qu'il existe
       if (email === 'demo@plusdebulles.com' && !isSignUp) {
@@ -46,10 +53,13 @@ const LoginForm: React.FC = () => {
         await signIn(email, password);
       }
     } catch (error: any) {
+      console.error('Erreur de connexion:', error);
       if (error.message.includes('Invalid login credentials')) {
         setError('Email ou mot de passe incorrect. Vérifiez vos identifiants ou utilisez le compte de démo.');
+      } else if (error.message.includes('fetch')) {
+        setError('Impossible de se connecter au serveur. Vérifiez votre connexion internet et la configuration Supabase.');
       } else {
-        setError(error.message || 'Une erreur est survenue');
+        setError(`Erreur de connexion: ${error.message || 'Une erreur inconnue est survenue'}`);
       }
     } finally {
       setLoading(false);
@@ -150,6 +160,9 @@ const LoginForm: React.FC = () => {
         {/* Compte de démonstration */}
         <div className="mt-6 p-4 bg-gray-50 rounded-lg">
           <h3 className="text-sm font-medium text-gray-700 mb-2">🚀 Compte de démonstration</h3>
+          <div className="mb-2 text-xs text-blue-600">
+            <strong>Note:</strong> Nécessite une configuration Supabase active
+          </div>
           <div className="text-xs text-gray-600 space-y-1">
             <p><strong>Email:</strong> demo@plusdebulles.com</p>
             <p><strong>Mot de passe:</strong> demo123</p>
@@ -165,6 +178,16 @@ const LoginForm: React.FC = () => {
           >
             Utiliser le compte de démo
           </button>
+        </div>
+
+        {/* Instructions de configuration */}
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+          <h4 className="text-xs font-medium text-blue-800 mb-1">🔧 Configuration requise</h4>
+          <div className="text-xs text-blue-700 space-y-1">
+            <p>1. Créez un projet sur <a href="https://supabase.com" target="_blank" className="underline">supabase.com</a></p>
+            <p>2. Copiez l'URL et la clé API dans le fichier .env</p>
+            <p>3. Redémarrez l'application</p>
+          </div>
         </div>
       </div>
     </div>

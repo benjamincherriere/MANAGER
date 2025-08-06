@@ -1,10 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createClient, User, Session } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-);
+// Vérifier la configuration avant de créer le client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Configuration Supabase manquante:', {
+    url: !!supabaseUrl,
+    key: !!supabaseKey
+  });
+}
+
+const supabase = createClient(supabaseUrl || '', supabaseKey || '');
 
 interface AuthContextType {
   user: User | null;

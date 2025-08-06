@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, TrendingUp, TrendingDown, DollarSign, Mail, Calendar, FileText, AlertCircle, Brain, Send, Loader, PieChart } from 'lucide-react';
+import { Upload, FileText, TrendingUp, AlertCircle, Download, Calendar, DollarSign, Percent, Eye, RefreshCw, BarChart3, PieChart, ShoppingCart, TrendingDown, Wallet } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, Tooltip, Legend, Pie } from 'recharts';
 
@@ -457,15 +457,10 @@ const FinanceModule: React.FC = () => {
       const lines = csvText.split('\n').filter(line => line.trim());
       
       if (lines.length <= 1) {
-        throw new Error('Le fichier CSV doit contenir au moins une ligne de données');
+        throw new Error('Le fichier CSV doit contenir au moins une ligne de données en plus de l\'en-tête');
       }
 
-      // Détecter le séparateur (virgule ou point-virgule)
-      const separator = lines[0].includes(';') ? ';' : ',';
-      console.log('Séparateur détecté:', separator);
-      
-      const headers = lines[0].toLowerCase().split(separator).map(h => h.trim().replace(/"/g, ''));
-      console.log('En-têtes détectés:', headers);
+      const headers = lines[0].toLowerCase().split(/[,;]/).map(h => h.trim().replace(/"/g, ''));
       
       // Détecter le format du CSV
       const isOrderFormat = headers.some(h => 
@@ -479,97 +474,44 @@ const FinanceModule: React.FC = () => {
       if (isOrderFormat) {
         // Format commandes : calculer les totaux par jour
         const ordersByDate = new Map();
-        const ordersByCommand = new Map();
         
-        const channelIndex = headers.findIndex(h => h.includes('chanel') || h.includes('channel'));
-        const commandIndex = headers.findIndex(h => h.includes('numero') || h.includes('commande'));
+        // Trouver les index des colonnes pour le format commandes
         const dateIndex = headers.findIndex(h => h.includes('date'));
-        const quantityIndex = headers.findIndex(h => h.includes('quantit'));
+        const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('quantit'));
         const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
-        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix achat'));
-        const remiseIndex = headers.findIndex(h => h.includes('remise'));
-        const cagnotteIndex = headers.findIndex(h => h.includes('cagnotte'));
+        const purchasePriceIndex = headers.findIndex(h => h.includes('prix achat'));
         
-        console.log('Index des colonnes:', {
-          channel: channelIndex,
-          command: commandIndex,
-          date: dateIndex,
-          quantity: quantityIndex,
-          salePrice: salePriceIndex,
-          purchasePrice: purchasePriceIndex,
-          remise: remiseIndex,
-          cagnotte: cagnotteIndex
-        });
-        
-        if (quantityIndex === -1) {
-          throw new Error('Colonne "quantity" manquante pour le format commandes');
+        if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
+          throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantity, prix de vente, prix achat');
         }
 
         for (let i = 1; i < lines.length; i++) {
           try {
-            const columns = lines[i].split(separator).map(c => c.trim().replace(/"/g, ''));
-            
-            console.log(`Ligne ${i + 1}:`, columns);
-            
-            // Vérifier si la ligne est vide
-            if (columns.every(col => !col)) {
+            const line = lines[i].trim();
+            if (!line) {
               console.log(`Ligne ${i + 1}: Ligne vide ignorée`);
               continue;
             }
             
-            // Étendre le tableau si nécessaire pour éviter les erreurs d'index
-            while (columns.length < headers.length) {
-              columns.push('');
+            const columns = line.split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+            
+            if (columns.length < headers.length) {
+              console.warn(`Ligne ${i + 1}: Nombre de colonnes insuffisant (${columns.length}/${headers.length}) - Ligne: "${line}"`);
+              errorCount++;
+              continue;
             }
 
-            const quantity = parseFloat(columns[quantityIndex]) || 0;
-            const salePrice = salePriceIndex !== -1 && columns[salePriceIndex] ? parseFloat(columns[salePriceIndex]) || 0 : 0;
-            const purchasePrice = purchasePriceIndex !== -1 && columns[purchasePriceIndex] ? parseFloat(columns[purchasePriceIndex]) || 0 : 0;
-            const remise = remiseIndex !== -1 && columns[remiseIndex] ? parseFloat(columns[remiseIndex]) || 0 : 0;
-            const cagnotte = cagnotteIndex !== -1 && columns[cagnotteIndex] ? parseFloat(columns[cagnotteIndex]) || 0 : 0;
-            
-            console.log(`Ligne ${i + 1} - Valeurs parsées:`, {
-              quantity,
-              salePrice,
-              purchasePrice,
-              remise,
-              cagnotte
-            });
+            const quantity = parseFloat(columns[quantityIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const salePrice = parseFloat(columns[salePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const purchasePrice = parseFloat(columns[purchasePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
 
-            // Validation : quantité > 0 ET (prix de vente > 0 OU prix d'achat > 0 OU remise > 0 OU cagnotte > 0)
-            if (quantity <= 0) {
-              // Cas spécial : ligne avec seulement remise ou cagnotte (quantity = 0 mais remise/cagnotte > 0)
-              if (remise <= 0 && cagnotte <= 0) {
-                console.warn(`Ligne ${i + 1}: Quantité invalide (${quantity}) et pas de remise/cagnotte - Ligne ignorée`);
-                errorCount++;
-                continue;
-              }
-            }
-            
-            // Calculer les montants
-            let lineRevenue = 0;
-            let lineCosts = 0;
-            let lineRemise = remise;
-            let lineCagnotte = cagnotte;
-            
-            if (quantity > 0) {
-              // Si pas de prix de vente mais prix d'achat, utiliser le prix d'achat
-              let finalSalePrice = salePrice;
-              if (salePrice <= 0 && purchasePrice > 0) {
-                finalSalePrice = purchasePrice;
-                console.log(`Ligne ${i + 1}: Utilisation du prix d'achat comme prix de vente`);
-              }
-              
-              lineRevenue = quantity * finalSalePrice;
-              lineCosts = quantity * purchasePrice;
+            if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+              errorCount++;
+              continue;
             }
 
-            console.log(`Ligne ${i + 1} - Montants calculés:`, {
-              lineRevenue,
-              lineCosts,
-              lineRemise,
-              lineCagnotte
-            });
+            const lineRevenue = quantity * salePrice;
+            const lineCosts = quantity * purchasePrice;
 
             // Utiliser la date de la colonne ou la date du jour
             let dateToUse;
@@ -596,11 +538,6 @@ const FinanceModule: React.FC = () => {
               dateToUse = new Date().toISOString().split('T')[0];
             }
             
-            // Récupérer le channel et le numéro de commande
-            const channel = channelIndex !== -1 && columns[channelIndex] ? columns[channelIndex] : 'Non spécifié';
-            const commandNumber = commandIndex !== -1 && columns[commandIndex] ? columns[commandIndex] : `CMD-${i}`;
-            
-            // Grouper par date
             if (!ordersByDate.has(dateToUse)) {
               ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
             }
