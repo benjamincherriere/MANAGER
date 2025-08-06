@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
-import { Calendar, FileText, TrendingUp, Menu, X } from 'lucide-react';
+import { Calendar, FileText, TrendingUp, Menu, X, Home } from 'lucide-react';
+import Dashboard from './components/Dashboard';
 import SupplierModule from './components/SupplierModule';
 import ProductModule from './components/ProductModule';
 import FinanceModule from './components/FinanceModule';
 
-type Module = 'suppliers' | 'products' | 'finance';
+type Module = 'dashboard' | 'suppliers' | 'products' | 'finance';
 
 function App() {
-  const [activeModule, setActiveModule] = useState<Module>('suppliers');
+  const [activeModule, setActiveModule] = useState<Module>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const modules = [
+    {
+      id: 'dashboard' as Module,
+      name: 'Tableau de Bord',
+      icon: Home,
+      description: 'Vue d\'ensemble de tous les modules'
+    },
     {
       id: 'suppliers' as Module,
       name: 'Suivi Fournisseurs',
@@ -33,6 +40,8 @@ function App() {
 
   const renderModule = () => {
     switch (activeModule) {
+      case 'dashboard':
+        return <Dashboard />;
       case 'suppliers':
         return <SupplierModule />;
       case 'products':
@@ -40,7 +49,7 @@ function App() {
       case 'finance':
         return <FinanceModule />;
       default:
-        return <SupplierModule />;
+        return <Dashboard />;
     }
   };
 
