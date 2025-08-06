@@ -477,7 +477,7 @@ const FinanceModule: React.FC = () => {
 
     } catch (error) {
       console.error('Erreur import:', error);
-      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Conseils :\n• Vérifiez le format de votre fichier CSV\n• Colonnes requises pour commandes: quantité, prix de vente, prix d'achat\n• Colonnes requises pour format standard: date, revenue, costs\n• Les dates doivent être au format valide (DD/MM/YYYY ou YYYY-MM-DD)`);
+      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Conseils :\n• Vérifiez le format de votre fichier CSV\n• Colonnes requises pour commandes: quantité, prix de vente, prix d'achat\n• Colonnes requises pour format standard: date, revenue, costs\n• Les dates doivent être au format YYYY-MM-DD ou DD/MM/YYYY`);
     } finally {
       setUploading(false);
     }
