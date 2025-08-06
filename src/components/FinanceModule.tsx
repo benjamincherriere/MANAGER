@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, TrendingUp, DollarSign, Calendar, AlertCircle, BarChart3, FileText, Settings, Trash2, RefreshCw, TrendingDown, Wallet, Brain } from 'lucide-react';
+import { Upload, Download, TrendingUp, DollarSign, Calendar, AlertCircle, FileText, Settings, RefreshCw, Brain, Mail } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
