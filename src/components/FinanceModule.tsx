@@ -87,6 +87,7 @@ const FinanceModule: React.FC = () => {
     totalCosts: 0,
     totalMargin: 0
   });
+  const [channelStats, setChannelStats] = useState<any>({});
 
   const CHANNEL_COLORS = [
     '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
@@ -96,13 +97,14 @@ const FinanceModule: React.FC = () => {
   useEffect(() => {
     loadFinancialData();
     loadDailyImportConfig();
+    loadChannelStats();
   }, []);
 
   const loadFinancialData = async () => {
     try {
       const { data, error } = await supabase
         .from('financial_data')
-        .select('*, discounts, cashback')
+        .select('*')
         .order('date', { ascending: false })
         .limit(30);
 
@@ -134,6 +136,27 @@ const FinanceModule: React.FC = () => {
       console.error('Erreur lors du chargement:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadChannelStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('setting_value')
+        .eq('setting_key', 'channel_statistics')
+        .single();
+
+      if (error && !error.message.includes('No rows')) {
+        console.warn('Erreur chargement stats canaux:', error);
+        return;
+      }
+
+      if (data?.setting_value?.channels) {
+        setChannelStats(data.setting_value.channels);
+      }
+    } catch (error) {
+      console.warn('Erreur chargement channel stats:', error);
     }
   };
 
@@ -439,6 +462,7 @@ const FinanceModule: React.FC = () => {
       
       // Recharger les données après upload
       await loadFinancialData();
+      await loadChannelStats();
       
       // Afficher le résultat
       const formatType = isOrderFormat ? 'commandes' : 'standard';
@@ -667,6 +691,7 @@ const FinanceModule: React.FC = () => {
 
       // Recharger les données
       await loadFinancialData();
+      await loadChannelStats();
       
       // Fermer le modal et afficher le résultat
       setShowUrlModal(false);
@@ -1287,25 +1312,19 @@ const FinanceModule: React.FC = () => {
             <h3 className="text-lg font-medium text-blue-800 mb-2">Format du fichier CSV</h3>
             <div className="text-blue-700 space-y-1 text-sm">
               <p className="text-sm text-gray-600 mb-4">
-                <strong>Format CSV attendu :</strong>
+                <strong>Format de vos données :</strong>
               </p>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-2">Format standard :</p>
                   <div className="bg-gray-100 p-3 rounded font-mono text-sm">
-                    date,revenue,costs,remise,cagnotte<br/>
-                    2024-01-15,1250.50,890.25,50.00,25.00<br/>
-                    2024-01-16,1180.75,820.40,30.00,15.00
+                    Chanel,Numero de commande,Date,ref produit,nom produit,marque produit,quantity,prix de vente,prix achat,remise,cagnotte<br/>
+                    Site Web,CMD001,2024-01-15,REF123,Produit A,Marque X,2,25.00,18.00,5.00,2.50
                   </div>
-                </div>
-                
-                <div>
-                  <p className="text-sm font-medium text-gray-700 mb-2">Format détaillé (par commande) :</p>
-                  <div className="bg-gray-100 p-3 rounded font-mono text-sm">
-                    date,quantité,prix_de_vente,prix_d_achat,remise,cagnotte<br/>
-                    2024-01-15,5,25.00,18.00,10.00,5.00<br/>
-                    2024-01-15,3,30.00,20.00,5.00,3.00
-                  </div>
+                  <p className="text-xs mt-2">
+                    ✅ <strong>Colonnes obligatoires :</strong> Date, quantity, prix de vente, prix achat<br/>
+                    ✅ <strong>Colonnes optionnelles :</strong> Chanel (pour la répartition), remise, cagnotte<br/>
+                    ✅ <strong>Calculs automatiques :</strong> CA = (quantity × prix de vente) - remise, Coûts = (quantity × prix achat) + cagnotte
+                  </p>
                 </div>
               </div>
               
@@ -1396,6 +1415,23 @@ const FinanceModule: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Note explicative */}
+          {Object.keys(channelStats).length === 0 ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 mb-2">📊 Aucune donnée par canal</h4>
+              <p className="text-sm text-blue-700">
+                Importez un CSV avec une colonne "Chanel" pour voir la répartition réelle par canal de vente.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <h4 className="font-medium text-green-800 mb-2">✅ Données réelles par canal</h4>
+              <p className="text-sm text-green-700">
+                Répartition basée sur vos données importées avec {Object.keys(channelStats).length} canal(aux) détecté(s).
+              </p>
+            </div>
+          )}
         </div>
       )}
 
