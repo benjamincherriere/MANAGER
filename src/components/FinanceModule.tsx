@@ -116,22 +116,200 @@ const FinanceModule: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Vérifier le type de fichier
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv' && file.type !== 'application/csv') {
+      alert('❌ Veuillez sélectionner un fichier CSV (.csv)');
+      return;
+    }
+
     setUploading(true);
     try {
-      // Simulation du traitement du fichier CSV
       const text = await file.text();
-      const lines = text.split('\n');
-      const headers = lines[0].split(',');
       
-      // Ici, vous implémenteriez la logique de parsing du CSV
-      // et l'insertion en base de données
+      if (!text || text.trim() === '') {
+        throw new Error('Le fichier CSV semble vide');
+      }
+
+      // Parser le CSV
+      const lines = text.split('\n').filter(line => line.trim());
       
-      console.log('Fichier CSV traité:', { headers, lineCount: lines.length });
+      if (lines.length <= 1) {
+        throw new Error('Le fichier CSV doit contenir au moins une ligne de données en plus de l\'en-tête');
+      }
+
+      // Détecter le séparateur (virgule ou point-virgule)
+      const firstLine = lines[0];
+      const separator = firstLine.includes(';') ? ';' : ',';
+      
+      const headers = firstLine.toLowerCase().split(separator).map(h => h.trim().replace(/"/g, ''));
+      
+      // Détecter le format du CSV
+      const isOrderFormat = headers.some(h => 
+        h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
+      );
+      
+      let dataToInsert = [];
+      let successCount = 0;
+      let errorCount = 0;
+
+      if (isOrderFormat) {
+        // Format commandes : calculer les totaux par jour
+        const ordersByDate = new Map();
+        
+        // Trouver les index des colonnes pour le format commandes
+        const dateIndex = headers.findIndex(h => h.includes('date'));
+        const quantityIndex = headers.findIndex(h => h.includes('quantit'));
+        const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
+        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
+        
+        if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
+          throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
+        }
+
+        for (let i = 1; i < lines.length; i++) {
+          try {
+            const columns = lines[i].split(separator).map(c => c.trim().replace(/"/g, ''));
+            
+            if (columns.length < headers.length) continue;
+
+            const quantity = parseFloat(columns[quantityIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const salePrice = parseFloat(columns[salePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const purchasePrice = parseFloat(columns[purchasePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
+
+            if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+              errorCount++;
+              continue;
+            }
+
+            const lineRevenue = quantity * salePrice;
+            const lineCosts = quantity * purchasePrice;
+
+            // Utiliser la date de la colonne ou la date du jour
+            let dateToUse;
+            if (dateIndex !== -1 && columns[dateIndex]) {
+              const parsedDate = new Date(columns[dateIndex]);
+              if (!isNaN(parsedDate.getTime())) {
+                dateToUse = parsedDate.toISOString().split('T')[0];
+              } else {
+                console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
+                dateToUse = new Date().toISOString().split('T')[0];
+              }
+            } else {
+              dateToUse = new Date().toISOString().split('T')[0];
+            }
+            
+            if (!ordersByDate.has(dateToUse)) {
+              ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
+            }
+            
+            const dayData = ordersByDate.get(dateToUse);
+            dayData.revenue += lineRevenue;
+            dayData.costs += lineCosts;
+            
+            successCount++;
+          } catch (error) {
+            console.warn(`Erreur ligne ${i + 1}:`, error);
+            errorCount++;
+          }
+        }
+
+        // Convertir en format pour insertion
+        ordersByDate.forEach((data, date) => {
+          dataToInsert.push({
+            date,
+            revenue: Math.round(data.revenue * 100) / 100,
+            costs: Math.round(data.costs * 100) / 100
+          });
+        });
+        
+      } else {
+        // Format standard : date, revenue, costs
+        // Trouver les index des colonnes
+        const dateIndex = headers.findIndex(h => h.includes('date'));
+        const revenueIndex = headers.findIndex(h => h.includes('revenue') || h.includes('chiffre') || h.includes('ca'));
+        const costsIndex = headers.findIndex(h => h.includes('costs') || h.includes('cout') || h.includes('charge'));
+
+        if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
+          throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
+        }
+
+        for (let i = 1; i < lines.length; i++) {
+          try {
+            const columns = lines[i].split(separator).map(c => c.trim().replace(/"/g, ''));
+            
+            if (columns.length < 3) continue;
+
+            const dateStr = columns[dateIndex];
+            const revenueStr = columns[revenueIndex];
+            const costsStr = columns[costsIndex];
+
+            // Valider et parser la date
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) {
+              console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+              errorCount++;
+              continue;
+            }
+
+            // Valider et parser les montants
+            const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
+            const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+
+            if (isNaN(revenue) || isNaN(costs)) {
+              console.warn(`Ligne ${i + 1}: Montants invalides (revenue: "${revenueStr}", costs: "${costsStr}")`);
+              errorCount++;
+              continue;
+            }
+
+            if (revenue < 0 || costs < 0) {
+              console.warn(`Ligne ${i + 1}: Montants négatifs non autorisés`);
+              errorCount++;
+              continue;
+            }
+
+            dataToInsert.push({
+              date: date.toISOString().split('T')[0],
+              revenue,
+              costs
+            });
+            successCount++;
+          } catch (error) {
+            console.warn(`Erreur ligne ${i + 1}:`, error);
+            errorCount++;
+          }
+        }
+      }
+
+      if (dataToInsert.length === 0) {
+        throw new Error('Aucune donnée valide trouvée dans le fichier CSV');
+      }
+
+      // Insérer en base de données
+      const { data, error } = await supabase
+        .from('financial_data')
+        .upsert(dataToInsert, { 
+          onConflict: 'date',
+          ignoreDuplicates: false 
+        })
+        .select();
+
+      if (error) {
+        throw new Error(`Erreur base de données: ${error.message}`);
+      }
       
       // Recharger les données après upload
       await loadFinancialData();
+      
+      // Afficher le résultat
+      const formatType = isOrderFormat ? 'commandes' : 'standard';
+      alert(`✅ Import réussi !\n\n📊 Format détecté: ${formatType}\n📈 ${dataToInsert.length} jour(s) de données créé(s) ou mis(es) à jour\n📦 ${successCount} lignes traitées avec succès\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs de format)` : ''}\n\n💡 Les marges ont été calculées automatiquement.`);
+      
+      // Réinitialiser l'input file
+      event.target.value = '';
+      
     } catch (error) {
       console.error('Erreur lors du traitement du fichier:', error);
+      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Conseils :\n• Vérifiez le format de votre fichier CSV\n• Colonnes requises pour commandes: quantité, prix de vente, prix d'achat\n• Colonnes requises pour format standard: date, revenue, costs`);
     } finally {
       setUploading(false);
     }
