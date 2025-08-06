@@ -17,9 +17,9 @@ const ProductModule: React.FC = () => {
 
   // Simulation de données pour la démo (à remplacer par l'intégration Google Sheets)
   const mockData = {
-    totalProducts: 150,
-    productsToCreate: 45,
-    completionRate: 70.0
+    totalProducts: 82,
+    productsToCreate: 82,
+    completionRate: 0.0
   };
 
   useEffect(() => {
