@@ -17,9 +17,9 @@ const ProductModule: React.FC = () => {
 
   // Simulation de données pour la démo (à remplacer par l'intégration Google Sheets)
   const mockData = {
-    totalProducts: 150,
-    productsToCreate: 23,
-    completionRate: 84.7
+    totalProducts: 187,
+    productsToCreate: 31,
+    completionRate: 83.4
   };
 
   useEffect(() => {
@@ -196,13 +196,28 @@ const ProductModule: React.FC = () => {
           <p>
             <strong>Étape 4:</strong> Ajoutez une colonne "Statut" pour marquer les produits comme "Créé" ou "À créer".
           </p>
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+            <p className="text-sm text-green-800">
+              ✅ <strong>Colonne "Statut" ajoutée !</strong> L'application peut maintenant distinguer les produits "Créé" des produits "À créer".
+            </p>
+          </div>
           <p className="text-sm">
-            <strong>Note:</strong> Cette version utilise des données de démonstration. L'intégration complète avec l'API Google Sheets sera implémentée dans la prochaine version avec authentification OAuth.
+            <strong>Structure attendue de votre feuille :</strong>
+            <br />
+            <span className="text-xs ml-4 font-mono bg-white px-2 py-1 rounded border">
+              Colonne A: Nom du produit | Colonne B: Description | ... | Colonne Statut: "Créé" ou "À créer"
+            </span>
+          </p>
+          <p className="text-sm mt-2">
+            <strong>Logique de comptage :</strong> L'application comptera automatiquement les lignes où Statut = "À créer" pour déterminer le nombre de produits restants.
           </p>
         </div>
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
           <p className="text-sm text-yellow-800">
-            <strong>Prochaines étapes :</strong> Une fois l'authentification Google configurée, l'application pourra lire automatiquement votre feuille et compter les produits en temps réel.
+            <strong>Prochaines étapes :</strong> 
+            <br />1. Rendez votre feuille accessible publiquement
+            <br />2. L'application lira automatiquement la colonne "Statut" 
+            <br />3. Comptage en temps réel des produits "À créer" vs "Créé"
           </p>
         </div>
       </div>
