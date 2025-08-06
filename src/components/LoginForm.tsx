@@ -34,7 +34,15 @@ const LoginForm: React.FC = () => {
 
     // Vérifier la configuration Supabase
     if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-      setError('Configuration Supabase manquante. Vérifiez votre fichier .env');
+      setError('Configuration Supabase manquante. Créez un fichier .env avec vos clés Supabase et redémarrez le serveur.');
+      setLoading(false);
+      return;
+    }
+
+    // Vérifier que les variables ne sont pas les valeurs par défaut
+    if (import.meta.env.VITE_SUPABASE_URL.includes('your-project-ref') || 
+        import.meta.env.VITE_SUPABASE_ANON_KEY.includes('your-anon-public-key')) {
+      setError('Veuillez remplacer les valeurs par défaut dans le fichier .env par vos vraies clés Supabase.');
       setLoading(false);
       return;
     }
