@@ -16,8 +16,8 @@ function App() {
     const checkConnection = async () => {
       try {
         const { data, error } = await supabase.from('_test').select('*').limit(1);
-        if (error && error.code !== 'PGRST116') {
-          // PGRST116 = table doesn't exist, ce qui est normal au début
+        if (error && error.code !== 'PGRST116' && error.code !== 'PGRST205') {
+          // PGRST116 & PGRST205 = table doesn't exist, ce qui est normal au début
           throw error;
         }
         setConnectionStatus('connected');
