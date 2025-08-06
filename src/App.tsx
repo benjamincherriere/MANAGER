@@ -20,17 +20,29 @@ function App() {
           // PGRST116 & PGRST205 = table doesn't exist, ce qui est normal au début
           throw error;
         }
-        setConnectionStatus('connected');
+      if (error) {
+        if (error.code === 'PGRST116' || error.code === 'PGRST205') {
+          // Expected error when table doesn't exist - connection is working
+          setSupabaseStatus('connected');
+          return;
+        }
+        // Unexpected error
+        throw error;
+      }
+      
+      // Table exists and query succeeded
+      setSupabaseStatus('connected');
+    } catch (error: any) {
+      // Only log unexpected errors
+      if (error.code !== 'PGRST116' && error.code !== 'PGRST205') {
+        console.error('Erreur de connexion Supabase:', error);
+      }
+      if (error.code === 'PGRST116' || error.code === 'PGRST205') {
       } catch (error) {
         console.error('Erreur de connexion Supabase:', error);
-        setConnectionStatus('error');
+        setSupabaseStatus('error');
       }
     };
-
-    if (import.meta.env.VITE_SUPABASE_URL) {
-      checkConnection();
-    } else {
-      setConnectionStatus('error');
     }
   }, []);
 
