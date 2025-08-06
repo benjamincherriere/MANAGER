@@ -98,6 +98,14 @@ Deno.serve(async (req) => {
       h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
     );
     
+    // Détecter les colonnes de remises et cagnottes
+    const discountIndex = headers.findIndex(h => 
+      h.includes('remise') || h.includes('reduction') || h.includes('discount')
+    );
+    const cashbackIndex = headers.findIndex(h => 
+      h.includes('cagnotte') || h.includes('cashback') || h.includes('fidelite')
+    );
+    
     const dataToInsert = [];
     let successCount = 0;
     let errorCount = 0;
@@ -124,14 +132,30 @@ Deno.serve(async (req) => {
           const quantity = parseFloat(columns[quantityIndex]) || 0;
           const salePrice = parseFloat(columns[salePriceIndex]) || 0;
           const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
+          
+          // Traiter les remises et cagnottes
+          let discount = 0;
+          let cashback = 0;
+          
+          if (discountIndex !== -1 && columns[discountIndex]) {
+            discount = parseFloat(columns[discountIndex].replace(/[^\d.-]/g, '')) || 0;
+          }
+          
+          if (cashbackIndex !== -1 && columns[cashbackIndex]) {
+            cashback = parseFloat(columns[cashbackIndex].replace(/[^\d.-]/g, '')) || 0;
+          }
 
           if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
             errorCount++;
             continue;
           }
 
-          const lineRevenue = quantity * salePrice;
+          // Calculer le chiffre d'affaires en déduisant les remises
+          const lineRevenue = (quantity * salePrice) - discount;
           const lineCosts = quantity * purchasePrice;
+          
+          // Ajouter les cagnottes aux coûts (car c'est un coût pour l'entreprise)
+          const totalLineCosts = lineCosts + cashback;
 
           // Utiliser la date de la colonne ou la date du jour
           let dateToUse;
@@ -153,7 +177,7 @@ Deno.serve(async (req) => {
           
           const dayData = ordersByDate.get(dateToUse);
           dayData.revenue += lineRevenue;
-          dayData.costs += lineCosts;
+          dayData.costs += totalLineCosts;
           
           successCount++;
         } catch (error) {
@@ -179,6 +203,14 @@ Deno.serve(async (req) => {
       );
       const costsIndex = headers.findIndex(h => 
         h.includes('costs') || h.includes('cout') || h.includes('charge')
+      );
+      
+      // Colonnes optionnelles pour remises et cagnottes
+      const discountIndex = headers.findIndex(h => 
+        h.includes('remise') || h.includes('reduction') || h.includes('discount')
+      );
+      const cashbackIndex = headers.findIndex(h => 
+        h.includes('cagnotte') || h.includes('cashback') || h.includes('fidelite')
       );
 
       if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
@@ -206,17 +238,33 @@ Deno.serve(async (req) => {
           // Valider et parser les montants
           const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
           const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+          
+          // Traiter les remises et cagnottes si présentes
+          let discount = 0;
+          let cashback = 0;
+          
+          if (discountIndex !== -1 && columns[discountIndex]) {
+            discount = parseFloat(columns[discountIndex].replace(/[^\d.-]/g, '')) || 0;
+          }
+          
+          if (cashbackIndex !== -1 && columns[cashbackIndex]) {
+            cashback = parseFloat(columns[cashbackIndex].replace(/[^\d.-]/g, '')) || 0;
+          }
 
           if (isNaN(revenue) || isNaN(costs) || revenue < 0 || costs < 0) {
             console.warn(`Ligne ${i + 1}: Montants invalides`);
             errorCount++;
             continue;
           }
+          
+          // Ajuster les montants avec remises et cagnottes
+          const adjustedRevenue = revenue - discount;
+          const adjustedCosts = costs + cashback;
 
           dataToInsert.push({
             date: date.toISOString().split('T')[0],
-            revenue,
-            costs
+            revenue: Math.max(0, adjustedRevenue), // S'assurer que le CA ne soit pas négatif
+            costs: adjustedCosts
           });
           successCount++;
         } catch (error) {
