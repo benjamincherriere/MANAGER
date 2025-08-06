@@ -13,6 +13,11 @@ interface ImportConfig {
   import_count?: number;
 }
 
+interface ChannelData {
+  revenue: number;
+  costs: number;
+  orders: number;
+}
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -93,192 +98,128 @@ Deno.serve(async (req) => {
 
     const headers = lines[0].toLowerCase().split(/[,;]/).map(h => h.trim().replace(/"/g, ''));
     
-    // Détecter le format du CSV
-    const isOrderFormat = headers.some(h => 
-      h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
-    );
-    
-    // Détecter les colonnes de remises et cagnottes
-    const discountIndex = headers.findIndex(h => 
-      h.includes('remise') || h.includes('reduction') || h.includes('discount')
-    );
-    const cashbackIndex = headers.findIndex(h => 
-      h.includes('cagnotte') || h.includes('cashback') || h.includes('fidelite')
-    );
+    // Détecter les colonnes selon votre format
+    const channelIndex = headers.findIndex(h => h.includes('chanel') || h.includes('channel'));
+    const orderNumberIndex = headers.findIndex(h => h.includes('numero') && h.includes('commande'));
+    const dateIndex = headers.findIndex(h => h.includes('date'));
+    const productRefIndex = headers.findIndex(h => h.includes('ref') && h.includes('produit'));
+    const productNameIndex = headers.findIndex(h => h.includes('nom') && h.includes('produit'));
+    const brandIndex = headers.findIndex(h => h.includes('marque'));
+    const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('quantit'));
+    const salePriceIndex = headers.findIndex(h => h.includes('prix') && h.includes('vente'));
+    const purchasePriceIndex = headers.findIndex(h => h.includes('prix') && h.includes('achat'));
+    const discountIndex = headers.findIndex(h => h.includes('remise'));
+    const cashbackIndex = headers.findIndex(h => h.includes('cagnotte'));
     
     const dataToInsert = [];
+    const channelDataByDate = new Map(); // Map<date, Map<channel, ChannelData>>
     let successCount = 0;
     let errorCount = 0;
 
-    if (isOrderFormat) {
-      // Format commandes : calculer les totaux par jour
-      const ordersByDate = new Map();
-      
-      const dateIndex = headers.findIndex(h => h.includes('date'));
-      const quantityIndex = headers.findIndex(h => h.includes('quantit'));
-      const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
-      const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
-      
-      if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
-        throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
-      }
+    // Vérifier les colonnes obligatoires
+    if (dateIndex === -1 || quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
+      throw new Error('Colonnes manquantes. Colonnes requises: Date, quantity, prix de vente, prix achat');
+    }
 
-      for (let i = 1; i < lines.length; i++) {
-        try {
-          const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
-          
-          if (columns.length < headers.length) continue;
+    // Traiter chaque ligne de commande
+    const ordersByDate = new Map();
+    const processedOrders = new Set(); // Pour éviter les doublons de commandes
 
-          const quantity = parseFloat(columns[quantityIndex]) || 0;
-          const salePrice = parseFloat(columns[salePriceIndex]) || 0;
-          const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
-          
-          // Traiter les remises et cagnottes
-          let discount = 0;
-          let cashback = 0;
-          
-          if (discountIndex !== -1 && columns[discountIndex]) {
-            discount = parseFloat(columns[discountIndex].replace(/[^\d.-]/g, '')) || 0;
-          }
-          
-          if (cashbackIndex !== -1 && columns[cashbackIndex]) {
-            cashback = parseFloat(columns[cashbackIndex].replace(/[^\d.-]/g, '')) || 0;
-          }
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+        
+        if (columns.length < headers.length) continue;
 
-          if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
-            errorCount++;
-            continue;
-          }
-
-          // Calculer le chiffre d'affaires en déduisant les remises
-          const lineRevenue = (quantity * salePrice) - discount;
-          const lineCosts = quantity * purchasePrice;
-          
-          // Ajouter les cagnottes aux coûts (car c'est un coût pour l'entreprise)
-          const totalLineCosts = lineCosts + cashback;
-
-          // Utiliser la date de la colonne ou la date du jour
-          let dateToUse;
-          if (dateIndex !== -1 && columns[dateIndex]) {
-            const parsedDate = new Date(columns[dateIndex]);
-            if (!isNaN(parsedDate.getTime())) {
-              dateToUse = parsedDate.toISOString().split('T')[0];
-            } else {
-              console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
-              dateToUse = new Date().toISOString().split('T')[0];
-            }
-          } else {
-            dateToUse = new Date().toISOString().split('T')[0];
-          }
-          
-          if (!ordersByDate.has(dateToUse)) {
-            ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
-          }
-          
-          const dayData = ordersByDate.get(dateToUse);
-          dayData.revenue += lineRevenue;
-          dayData.costs += totalLineCosts;
-          
-          successCount++;
-        } catch (error) {
-          console.warn(`Erreur ligne ${i + 1}:`, error);
-          errorCount++;
+        // Extraire les données de la ligne
+        const channel = channelIndex !== -1 ? columns[channelIndex] : 'Non spécifié';
+        const orderNumber = orderNumberIndex !== -1 ? columns[orderNumberIndex] : '';
+        const dateStr = columns[dateIndex];
+        const quantity = parseFloat(columns[quantityIndex]) || 0;
+        const salePrice = parseFloat(columns[salePriceIndex]) || 0;
+        const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
+        
+        // Traiter les remises et cagnottes
+        let discount = 0;
+        let cashback = 0;
+        
+        if (discountIndex !== -1 && columns[discountIndex]) {
+          discount = parseFloat(columns[discountIndex].replace(/[^\d.-]/g, '')) || 0;
         }
-      }
-
-      // Convertir en format pour insertion
-      ordersByDate.forEach((data, date) => {
-        dataToInsert.push({
-          date,
-          revenue: Math.round(data.revenue * 100) / 100,
-          costs: Math.round(data.costs * 100) / 100
-        });
-      });
-      
-    } else {
-      // Format standard : date, revenue, costs
-      const dateIndex = headers.findIndex(h => h.includes('date'));
-      const revenueIndex = headers.findIndex(h => 
-        h.includes('revenue') || h.includes('chiffre') || h.includes('ca')
-      );
-      const costsIndex = headers.findIndex(h => 
-        h.includes('costs') || h.includes('cout') || h.includes('charge')
-      );
-      
-      // Colonnes optionnelles pour remises et cagnottes
-      const discountIndex = headers.findIndex(h => 
-        h.includes('remise') || h.includes('reduction') || h.includes('discount')
-      );
-      const cashbackIndex = headers.findIndex(h => 
-        h.includes('cagnotte') || h.includes('cashback') || h.includes('fidelite')
-      );
-
-      if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
-        throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
-      }
-
-      for (let i = 1; i < lines.length; i++) {
-        try {
-          const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
-          
-          if (columns.length < 3) continue;
-
-          const dateStr = columns[dateIndex];
-          const revenueStr = columns[revenueIndex];
-          const costsStr = columns[costsIndex];
-
-          // Valider et parser la date
-          const date = new Date(dateStr);
-          if (isNaN(date.getTime())) {
-            console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
-            errorCount++;
-            continue;
-          }
-
-          // Valider et parser les montants
-          const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
-          const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
-          
-          // Traiter les remises et cagnottes si présentes
-          let discount = 0;
-          let cashback = 0;
-          
-          if (discountIndex !== -1 && columns[discountIndex]) {
-            discount = parseFloat(columns[discountIndex].replace(/[^\d.-]/g, '')) || 0;
-          }
-          
-          if (cashbackIndex !== -1 && columns[cashbackIndex]) {
-            cashback = parseFloat(columns[cashbackIndex].replace(/[^\d.-]/g, '')) || 0;
-          }
-
-          if (isNaN(revenue) || isNaN(costs) || revenue < 0 || costs < 0) {
-            console.warn(`Ligne ${i + 1}: Montants invalides`);
-            errorCount++;
-            continue;
-          }
-          
-          // Ajuster les montants avec remises et cagnottes
-          const adjustedRevenue = revenue - discount;
-          const adjustedCosts = costs + cashback;
-
-          dataToInsert.push({
-            date: date.toISOString().split('T')[0],
-            revenue: Math.max(0, adjustedRevenue), // S'assurer que le CA ne soit pas négatif
-            costs: adjustedCosts
-          });
-          successCount++;
-        } catch (error) {
-          console.warn(`Erreur ligne ${i + 1}:`, error);
-          errorCount++;
+        
+        if (cashbackIndex !== -1 && columns[cashbackIndex]) {
+          cashback = parseFloat(columns[cashbackIndex].replace(/[^\d.-]/g, '')) || 0;
         }
+
+        // Valider les données
+        if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+          errorCount++;
+          continue;
+        }
+
+        // Valider et parser la date
+        const parsedDate = new Date(dateStr);
+        if (isNaN(parsedDate.getTime())) {
+          console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+          errorCount++;
+          continue;
+        }
+        const dateToUse = parsedDate.toISOString().split('T')[0];
+
+        // Calculer le chiffre d'affaires et les coûts pour cette ligne
+        const lineRevenue = (quantity * salePrice) - discount;
+        const lineCosts = (quantity * purchasePrice) + cashback;
+
+        // Agrégation par date (pour financial_data)
+        if (!ordersByDate.has(dateToUse)) {
+          ordersByDate.set(dateToUse, { revenue: 0, costs: 0, orders: new Set() });
+        }
+        
+        const dayData = ordersByDate.get(dateToUse);
+        dayData.revenue += lineRevenue;
+        dayData.costs += lineCosts;
+        if (orderNumber) {
+          dayData.orders.add(orderNumber);
+        }
+
+        // Agrégation par canal et date (pour les statistiques)
+        if (!channelDataByDate.has(dateToUse)) {
+          channelDataByDate.set(dateToUse, new Map());
+        }
+        
+        const dateChannels = channelDataByDate.get(dateToUse);
+        if (!dateChannels.has(channel)) {
+          dateChannels.set(channel, { revenue: 0, costs: 0, orders: new Set() });
+        }
+        
+        const channelData = dateChannels.get(channel);
+        channelData.revenue += lineRevenue;
+        channelData.costs += lineCosts;
+        if (orderNumber) {
+          channelData.orders.add(orderNumber);
+        }
+        
+        successCount++;
+      } catch (error) {
+        console.warn(`Erreur ligne ${i + 1}:`, error);
+        errorCount++;
       }
     }
+
+    // Convertir les données agrégées pour insertion dans financial_data
+    ordersByDate.forEach((data, date) => {
+      dataToInsert.push({
+        date,
+        revenue: Math.round(data.revenue * 100) / 100,
+        costs: Math.round(data.costs * 100) / 100
+      });
+    });
 
     if (dataToInsert.length === 0) {
       throw new Error('Aucune donnée valide trouvée dans le fichier CSV');
     }
 
-    // Insérer en base de données
+    // Insérer les données financières globales
     const { error: insertError } = await supabase
       .from('financial_data')
       .upsert(dataToInsert, { 
@@ -287,8 +228,36 @@ Deno.serve(async (req) => {
       });
 
     if (insertError) {
-      throw new Error(`Erreur insertion: ${insertError.message}`);
+      throw new Error(`Erreur insertion financial_data: ${insertError.message}`);
     }
+
+    // Sauvegarder les données par canal dans user_settings pour les statistiques
+    const channelStats = {};
+    channelDataByDate.forEach((channels, date) => {
+      channels.forEach((data, channel) => {
+        if (!channelStats[channel]) {
+          channelStats[channel] = { revenue: 0, costs: 0, orders: 0, dates: [] };
+        }
+        channelStats[channel].revenue += data.revenue;
+        channelStats[channel].costs += data.costs;
+        channelStats[channel].orders += data.orders.size;
+        channelStats[channel].dates.push(date);
+      });
+    });
+
+    // Sauvegarder les statistiques par canal
+    await supabase
+      .from('user_settings')
+      .upsert({
+        setting_key: 'channel_statistics',
+        setting_value: {
+          channels: channelStats,
+          last_update: new Date().toISOString(),
+          total_channels: Object.keys(channelStats).length
+        }
+      }, {
+        onConflict: 'user_id,setting_key'
+      });
 
     // Mettre à jour la configuration avec la dernière date d'import
     const updatedConfig = {
@@ -304,11 +273,13 @@ Deno.serve(async (req) => {
 
     const result = {
       success: true,
-      message: `Import quotidien réussi: ${successCount} lignes importées`,
+      message: `Import réussi: ${successCount} lignes traitées, ${Object.keys(channelStats).length} canaux détectés`,
       stats: {
         imported: successCount,
         errors: errorCount,
         total: lines.length - 1,
+        channels: Object.keys(channelStats),
+        channel_breakdown: channelStats,
         timestamp: new Date().toISOString()
       }
     };

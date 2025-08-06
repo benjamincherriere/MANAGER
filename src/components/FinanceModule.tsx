@@ -102,7 +102,7 @@ const FinanceModule: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('financial_data')
-        .select('*, discounts, cashback')
+        .select('*')
         .order('date', { ascending: false })
         .limit(30);
 
