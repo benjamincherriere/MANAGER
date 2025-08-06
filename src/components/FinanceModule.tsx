@@ -174,7 +174,7 @@ const FinanceModule: React.FC = () => {
       
       // Détecter le format du CSV
       const isOrderFormat = headers.some(h => 
-        h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
+        h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat') || h.includes('prix d\'achat')
       );
       
       let dataToInsert = [];
@@ -197,13 +197,13 @@ const FinanceModule: React.FC = () => {
 
         for (let i = 1; i < lines.length; i++) {
           try {
-            const columns = lines[i].split(';').map(c => c.trim().replace(/"/g, ''));
+            const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
             
             if (columns.length < headers.length) continue;
 
-            const quantity = parseFloat(columns[quantityIndex]) || 0;
-            const salePrice = parseFloat(columns[salePriceIndex]) || 0;
-            const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
+            const quantity = parseFloat(columns[quantityIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const salePrice = parseFloat(columns[salePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const purchasePrice = parseFloat(columns[purchasePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
 
             if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
               errorCount++;
@@ -253,23 +253,18 @@ const FinanceModule: React.FC = () => {
         
       } else {
         // Format standard : date, revenue, costs
-        const requiredColumns = ['date', 'revenue', 'costs'];
-        const missingColumns = requiredColumns.filter(col => 
-          !headers.some(h => h.includes(col) || h.includes(col.replace('revenue', 'chiffre')) || h.includes(col.replace('costs', 'cout')))
-        );
-
-        if (missingColumns.length > 0) {
-          throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}. Format attendu: date, revenue, costs`);
-        }
-
         // Trouver les index des colonnes
         const dateIndex = headers.findIndex(h => h.includes('date'));
         const revenueIndex = headers.findIndex(h => h.includes('revenue') || h.includes('chiffre') || h.includes('ca'));
         const costsIndex = headers.findIndex(h => h.includes('costs') || h.includes('cout') || h.includes('charge'));
 
+        if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
+          throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
+        }
+
         for (let i = 1; i < lines.length; i++) {
           try {
-            const columns = lines[i].split(';').map(c => c.trim().replace(/"/g, ''));
+            const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
             
             if (columns.length < 3) continue;
 
@@ -339,11 +334,11 @@ const FinanceModule: React.FC = () => {
       setCsvUrl('');
       
       const formatType = isOrderFormat ? 'commandes' : 'standard';
-      alert(`✅ Import réussi !\n\n📊 Format détecté: ${formatType}\n📈 ${dataToInsert.length} jour(s) de données créé(s)\n📦 ${successCount} lignes traitées\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs)` : ''}\n\n💡 Les marges ont été calculées automatiquement.`);
+      alert(`✅ Import réussi !\n\n📊 Format détecté: ${formatType}\n📈 ${dataToInsert.length} jour(s) de données créé(s) ou mis(es) à jour\n📦 ${successCount} lignes traitées avec succès\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs de format)` : ''}\n\n💡 Les marges ont été calculées automatiquement.`);
 
     } catch (error) {
       console.error('Erreur import URL:', error);
-      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Vérifiez que l'URL est accessible et que le fichier respecte le format CSV attendu.`);
+      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Conseils :\n• Vérifiez que l'URL est accessible publiquement\n• Le fichier doit être au format CSV avec séparateur ; ou ,\n• Colonnes requises pour commandes: quantité, prix de vente, prix d'achat\n• Colonnes requises pour format standard: date, revenue, costs`);
     } finally {
       setImportingFromUrl(false);
     }
