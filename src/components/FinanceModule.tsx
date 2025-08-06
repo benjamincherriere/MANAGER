@@ -1321,7 +1321,7 @@ const FinanceModule: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <div className="bg-gray-100 p-3 rounded font-mono text-sm">
-                    Chanel,Numero de commande,Date,ref produit,nom produit,marque produit,quantity,prix de vente,prix achat,remise,cagnotte<br/>
+                    channel, order_number, order_date, total_sales, total_cost, total_margin<br/>
                     Site Web,CMD001,2024-01-15,REF123,Produit A,Marque X,2,25.00,18.00,5.00,2.50
                   </div>
                   <p className="text-xs mt-2">
