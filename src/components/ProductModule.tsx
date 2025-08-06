@@ -12,6 +12,8 @@ const ProductModule: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1omv1n5kHaESPbqBMx4zNhFreRk-fuJns3tgECanO2Jc/edit?gid=690830060#gid=690830060';
+  const SHEET_ID = '1omv1n5kHaESPbqBMx4zNhFreRk-fuJns3tgECanO2Jc';
+  const SHEET_GID = '690830060';
 
   // Simulation de données pour la démo (à remplacer par l'intégration Google Sheets)
   const mockData = {
@@ -175,18 +177,32 @@ const ProductModule: React.FC = () => {
       {/* Instructions d'intégration */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="text-lg font-medium text-blue-800 mb-3">Configuration Google Sheets</h3>
+        <div className="mb-4 p-3 bg-white rounded border">
+          <p className="text-sm text-gray-600 mb-2"><strong>Feuille Google Sheets configurée :</strong></p>
+          <p className="text-xs text-gray-500 font-mono break-all">{SHEET_URL}</p>
+        </div>
         <div className="space-y-3 text-blue-700">
           <p>
-            <strong>Étape 1:</strong> Assurez-vous que votre Google Sheet est accessible publiquement ou configurez l'authentification OAuth.
+            <strong>Étape 1:</strong> Votre Google Sheet est déjà configuré avec l'ID : <code className="bg-blue-100 px-1 rounded">{SHEET_ID}</code>
           </p>
           <p>
-            <strong>Étape 2:</strong> L'intégration comptera automatiquement le nombre de lignes (produits) dans votre feuille.
+            <strong>Étape 2:</strong> Pour activer l'intégration automatique, rendez votre feuille accessible publiquement :
+            <br />
+            <span className="text-sm ml-4">• Cliquez sur "Partager" → "Modifier l'accès général" → "Tous les utilisateurs ayant le lien"</span>
           </p>
           <p>
-            <strong>Étape 3:</strong> Ajoutez une colonne "Statut" pour marquer les produits comme "Créé" ou "À créer".
+            <strong>Étape 3:</strong> L'intégration comptera automatiquement le nombre de lignes (produits) dans votre feuille.
+          </p>
+          <p>
+            <strong>Étape 4:</strong> Ajoutez une colonne "Statut" pour marquer les produits comme "Créé" ou "À créer".
           </p>
           <p className="text-sm">
-            <strong>Note:</strong> Cette version utilise des données de démonstration. L'intégration complète avec Google Sheets sera implémentée dans la prochaine version.
+            <strong>Note:</strong> Cette version utilise des données de démonstration. L'intégration complète avec l'API Google Sheets sera implémentée dans la prochaine version avec authentification OAuth.
+          </p>
+        </div>
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+          <p className="text-sm text-yellow-800">
+            <strong>Prochaines étapes :</strong> Une fois l'authentification Google configurée, l'application pourra lire automatiquement votre feuille et compter les produits en temps réel.
           </p>
         </div>
       </div>
