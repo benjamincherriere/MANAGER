@@ -205,18 +205,18 @@ const ProductModule: React.FC = () => {
             <strong>Structure attendue de votre feuille :</strong>
             <br />
             <span className="text-xs ml-4 font-mono bg-white px-2 py-1 rounded border">
-              Colonne A: Nom du produit | Colonne B: Description | ... | Colonne Statut: "Créé" ou "À créer"
+              Colonne A: Nom du produit | Colonne B: Description | ... | Colonne F: Statut ("Créé" ou "À créer")
             </span>
           </p>
           <p className="text-sm mt-2">
-            <strong>Logique de comptage :</strong> L'application comptera automatiquement les lignes où Statut = "À créer" pour déterminer le nombre de produits restants.
+            <strong>Logique de comptage :</strong> L'application lira la colonne F et comptera automatiquement les lignes où Statut = "À créer" pour déterminer le nombre de produits restants.
           </p>
         </div>
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
           <p className="text-sm text-yellow-800">
             <strong>Prochaines étapes :</strong> 
             <br />1. Rendez votre feuille accessible publiquement
-            <br />2. L'application lira automatiquement la colonne "Statut" 
+            <br />2. L'application lira automatiquement la colonne F (Statut)
             <br />3. Comptage en temps réel des produits "À créer" vs "Créé"
           </p>
         </div>
