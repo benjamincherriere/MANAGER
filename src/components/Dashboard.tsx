@@ -319,7 +319,7 @@ const Dashboard: React.FC = () => {
               <span className="font-medium text-green-600">{stats.suppliers.meetingsThisYear}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">En retard (>2 ans)</span>
+              <span className="text-sm text-gray-600">En retard (&gt;2 ans)</span>
               <span className={`font-medium ${stats.suppliers.overdue > 0 ? 'text-red-600' : 'text-green-600'}`}>
                 {stats.suppliers.overdue}
               </span>
