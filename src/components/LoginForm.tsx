@@ -10,12 +10,34 @@ const LoginForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const initDemoUser = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/init-demo-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.log('Demo user might already exist');
+      }
+    } catch (error) {
+      console.log('Error creating demo user:', error);
+    }
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
+      // Si c'est le compte de démo, s'assurer qu'il existe
+      if (email === 'demo@plusdebulles.com' && !isSignUp) {
+        await initDemoUser();
+      }
+
       if (isSignUp) {
         await signUp(email, password);
         alert('✅ Compte créé ! Vous pouvez maintenant vous connecter.');
@@ -24,7 +46,11 @@ const LoginForm: React.FC = () => {
         await signIn(email, password);
       }
     } catch (error: any) {
-      setError(error.message || 'Une erreur est survenue');
+      if (error.message.includes('Invalid login credentials')) {
+        setError('Email ou mot de passe incorrect. Vérifiez vos identifiants ou utilisez le compte de démo.');
+      } else {
+        setError(error.message || 'Une erreur est survenue');
+      }
     } finally {
       setLoading(false);
     }
@@ -133,6 +159,7 @@ const LoginForm: React.FC = () => {
             onClick={() => {
               setEmail('demo@plusdebulles.com');
               setPassword('demo123');
+              setError(null);
             }}
             className="mt-2 text-xs text-blue-600 hover:text-blue-800"
           >
