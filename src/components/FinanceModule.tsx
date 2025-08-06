@@ -487,9 +487,19 @@ const FinanceModule: React.FC = () => {
 
         for (let i = 1; i < lines.length; i++) {
           try {
-            const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+            const line = lines[i].trim();
+            if (!line) {
+              console.log(`Ligne ${i + 1}: Ligne vide ignorée`);
+              continue;
+            }
             
-            if (columns.length < headers.length) continue;
+            const columns = line.split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+            
+            if (columns.length < headers.length) {
+              console.warn(`Ligne ${i + 1}: Nombre de colonnes insuffisant (${columns.length}/${headers.length}) - Ligne: "${line}"`);
+              errorCount++;
+              continue;
+            }
 
             const quantity = parseFloat(columns[quantityIndex]?.replace(/[^\d.-]/g, '')) || 0;
             const salePrice = parseFloat(columns[salePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
