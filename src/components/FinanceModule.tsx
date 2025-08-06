@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, TrendingUp, TrendingDown, DollarSign, Mail, Calendar, FileText, AlertCircle } from 'lucide-react';
+import { Upload, TrendingUp, TrendingDown, DollarSign, Mail, Calendar, FileText, AlertCircle, Brain, Send, Loader } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -33,8 +33,16 @@ const FinanceModule: React.FC = () => {
   const [emailSettings, setEmailSettings] = useState({
     email: '',
     dailyReports: true,
-    weeklyReports: true
+    weeklyReports: true,
+    openaiApiKey: localStorage.getItem('openai_api_key') || ''
   });
+  const [analysis, setAnalysis] = useState<{
+    content: string;
+    stats: any;
+    timestamp: Date;
+  } | null>(null);
+  const [analyzingData, setAnalyzingData] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   useEffect(() => {
     loadFinancialData();
@@ -115,6 +123,63 @@ const FinanceModule: React.FC = () => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const generateAnalysis = async (type: 'daily' | 'weekly' | 'monthly', sendEmail = false) => {
+    if (!emailSettings.openaiApiKey) {
+      alert('Veuillez configurer votre clé API OpenAI dans les paramètres');
+      setShowApiKeyModal(true);
+      return;
+    }
+
+    if (sendEmail && !emailSettings.email) {
+      alert('Veuillez configurer votre adresse email');
+      return;
+    }
+
+    setAnalyzingData(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/financial-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type,
+          email: sendEmail ? emailSettings.email : undefined,
+          openai_api_key: emailSettings.openaiApiKey
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur lors de l\'analyse');
+      }
+
+      setAnalysis({
+        content: result.analysis,
+        stats: result.stats,
+        timestamp: new Date()
+      });
+
+      if (sendEmail) {
+        alert('✅ Rapport envoyé par email avec succès !');
+      }
+
+    } catch (error) {
+      console.error('Erreur analyse:', error);
+      alert(`Erreur: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    } finally {
+      setAnalyzingData(false);
+    }
+  };
+
+  const saveApiSettings = () => {
+    localStorage.setItem('openai_api_key', emailSettings.openaiApiKey);
+    setShowApiKeyModal(false);
+    alert('✅ Paramètres sauvegardés !');
   };
 
   const getCurrentStats = () => {
@@ -315,6 +380,111 @@ const FinanceModule: React.FC = () => {
         </div>
       </div>
 
+      {/* Analyse ChatGPT */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Brain className="h-6 w-6 text-purple-600 mr-3" />
+              <h3 className="text-lg font-medium text-gray-900">Analyse ChatGPT</h3>
+            </div>
+            <button
+              onClick={() => setShowApiKeyModal(true)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              ⚙️ Configuration
+            </button>
+          </div>
+        </div>
+        <div className="p-6">
+          {/* Boutons d'analyse */}
+          <div className="flex flex-wrap gap-3 mb-6">
+            <button
+              onClick={() => generateAnalysis('daily')}
+              disabled={analyzingData}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {analyzingData ? <Loader className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
+              Analyse 7 jours
+            </button>
+            <button
+              onClick={() => generateAnalysis('weekly')}
+              disabled={analyzingData}
+              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {analyzingData ? <Loader className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
+              Analyse mensuelle
+            </button>
+            <button
+              onClick={() => generateAnalysis('monthly')}
+              disabled={analyzingData}
+              className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+            >
+              {analyzingData ? <Loader className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
+              Analyse 3 mois
+            </button>
+          </div>
+
+          {/* Boutons d'envoi par email */}
+          {emailSettings.email && emailSettings.openaiApiKey && (
+            <div className="flex flex-wrap gap-3 mb-6 p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-800 w-full mb-2">📧 Envoyer par email à {emailSettings.email}</p>
+              <button
+                onClick={() => generateAnalysis('daily', true)}
+                disabled={analyzingData}
+                className="flex items-center px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
+              >
+                <Send className="h-3 w-3 mr-1" />
+                Rapport quotidien
+              </button>
+              <button
+                onClick={() => generateAnalysis('weekly', true)}
+                disabled={analyzingData}
+                className="flex items-center px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors disabled:opacity-50"
+              >
+                <Send className="h-3 w-3 mr-1" />
+                Rapport hebdomadaire
+              </button>
+            </div>
+          )}
+
+          {/* Résultat de l'analyse */}
+          {analysis && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-sm text-gray-500">
+                <span>🤖 Analyse générée le {analysis.timestamp.toLocaleString('fr-FR')}</span>
+                <div className="flex space-x-4">
+                  <span>📊 {analysis.stats.daysAnalyzed} jours</span>
+                  <span>💰 {parseFloat(analysis.stats.totalRevenue).toLocaleString('fr-FR')}€</span>
+                  <span>📈 {analysis.stats.avgMargin}% marge</span>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4 border-l-4 border-purple-500">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-sans leading-relaxed">
+                  {analysis.content}
+                </pre>
+              </div>
+            </div>
+          )}
+
+          {analyzingData && (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <Loader className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-2" />
+                <p className="text-gray-600">🤖 ChatGPT analyse vos données financières...</p>
+              </div>
+            </div>
+          )}
+
+          {!analysis && !analyzingData && (
+            <div className="text-center py-8 text-gray-500">
+              <Brain className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <p>Cliquez sur un bouton d'analyse pour obtenir des insights ChatGPT sur vos données financières</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Configuration des rapports par email */}
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center mb-4">
@@ -333,6 +503,21 @@ const FinanceModule: React.FC = () => {
               className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="votre@email.com"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Clé API OpenAI
+            </label>
+            <input
+              type="password"
+              value={emailSettings.openaiApiKey}
+              onChange={(e) => setEmailSettings({...emailSettings, openaiApiKey: e.target.value})}
+              className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="sk-..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Nécessaire pour l'analyse ChatGPT. <a href="https://platform.openai.com/api-keys" target="_blank" className="text-blue-600 hover:underline">Obtenir une clé API</a>
+            </p>
           </div>
           <div className="space-y-2">
             <label className="flex items-center">
@@ -355,6 +540,10 @@ const FinanceModule: React.FC = () => {
             </label>
           </div>
           <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+            onClick={() => {
+              localStorage.setItem('openai_api_key', emailSettings.openaiApiKey);
+              alert('✅ Paramètres sauvegardés !');
+            }}
             Sauvegarder les paramètres
           </button>
         </div>
@@ -378,6 +567,56 @@ const FinanceModule: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal Configuration API */}
+      {showApiKeyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Configuration OpenAI</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Clé API OpenAI
+                </label>
+                <input
+                  type="password"
+                  value={emailSettings.openaiApiKey}
+                  onChange={(e) => setEmailSettings({...emailSettings, openaiApiKey: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="sk-proj-..."
+                />
+              </div>
+              <div className="text-sm text-gray-600 space-y-2">
+                <p><strong>Pour obtenir votre clé API :</strong></p>
+                <ol className="list-decimal list-inside ml-2 space-y-1">
+                  <li>Allez sur <a href="https://platform.openai.com/api-keys" target="_blank" className="text-blue-600 hover:underline">platform.openai.com</a></li>
+                  <li>Créez un compte ou connectez-vous</li>
+                  <li>Cliquez sur "Create new secret key"</li>
+                  <li>Copiez la clé et collez-la ici</li>
+                </ol>
+                <p className="text-xs text-yellow-700 bg-yellow-50 p-2 rounded">
+                  ⚠️ Gardez votre clé secrète ! Elle sera stockée localement dans votre navigateur.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowApiKeyModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveApiSettings}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Sauvegarder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
