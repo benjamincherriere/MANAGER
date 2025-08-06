@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
       // Format commandes : calculer les totaux par jour
       const ordersByDate = new Map();
       
-     const dateIndex = headers.findIndex(h => h.includes('date'));
+      const dateIndex = headers.findIndex(h => h.includes('date'));
       const quantityIndex = headers.findIndex(h => h.includes('quantit'));
       const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
       const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
@@ -128,31 +128,30 @@ Deno.serve(async (req) => {
           if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
             errorCount++;
             continue;
-
-         }
+          }
 
           const lineRevenue = quantity * salePrice;
           const lineCosts = quantity * purchasePrice;
 
-         // Utiliser la date de la colonne ou la date du jour
-         let dateToUse;
-         if (dateIndex !== -1 && columns[dateIndex]) {
-           const parsedDate = new Date(columns[dateIndex]);
-           if (!isNaN(parsedDate.getTime())) {
-             dateToUse = parsedDate.toISOString().split('T')[0];
-           } else {
-             console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
-             dateToUse = new Date().toISOString().split('T')[0];
-           }
-         } else {
-           dateToUse = new Date().toISOString().split('T')[0];
-         }
-          
-         if (!ordersByDate.has(dateToUse)) {
-           ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
+          // Utiliser la date de la colonne ou la date du jour
+          let dateToUse;
+          if (dateIndex !== -1 && columns[dateIndex]) {
+            const parsedDate = new Date(columns[dateIndex]);
+            if (!isNaN(parsedDate.getTime())) {
+              dateToUse = parsedDate.toISOString().split('T')[0];
+            } else {
+              console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
+              dateToUse = new Date().toISOString().split('T')[0];
+            }
+          } else {
+            dateToUse = new Date().toISOString().split('T')[0];
           }
           
-         const dayData = ordersByDate.get(dateToUse);
+          if (!ordersByDate.has(dateToUse)) {
+            ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
+          }
+          
+          const dayData = ordersByDate.get(dateToUse);
           dayData.revenue += lineRevenue;
           dayData.costs += lineCosts;
           
@@ -160,6 +159,8 @@ Deno.serve(async (req) => {
         } catch (error) {
           console.warn(`Erreur ligne ${i + 1}:`, error);
           errorCount++;
+        }
+      }
 
       // Convertir en format pour insertion
       ordersByDate.forEach((data, date) => {
