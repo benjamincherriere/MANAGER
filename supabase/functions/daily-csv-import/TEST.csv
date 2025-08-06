@@ -1,0 +1,6 @@
+Chanel;Numero de commande;Date;ref produit;nom produit;marque produit;quantity;prix de vente;tva;prix achat
+1;1232;06/08/2025;123-75;Brut Classic;Deutz;3;42;20%;25
+1;1232;06/08/2025;122-75;Brut Rosé;Bollinger;2;60;20%;38
+1;1233;06/08/2025;101-75;Blanc de Blancs;Diebolt-Vallois;6;39;20%;23
+2;1234;06/08/2025;102-75;Brut;Taittinger;2;44;21%;26
+2;1234;06/08/2025;102-37;Brut;Taittinger;4;26;21%;14
