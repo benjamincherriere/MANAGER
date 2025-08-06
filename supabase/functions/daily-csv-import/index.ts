@@ -71,14 +71,8 @@ Deno.serve(async (req) => {
 
     // Vérifier l'en-tête
     const headers = lines[0].toLowerCase().split(',').map((h: string) => h.trim());
-    const expectedHeaders = [
-      'channel', 'order_number', 'order_date', 'product_ref', 'product_name', 
-      'brand_name', 'quantity', 'unit_selling_price', 'unit_purchase_price', 
-      'discount', 'reward_credit', 'total_sales', 'total_cost', 'total_margin', 'margin_rate'
-    ];
 
     console.log('En-têtes détectés:', headers);
-    console.log('En-têtes attendus:', expectedHeaders);
 
     // Vérifier que toutes les colonnes essentielles sont présentes
     const essentialColumns = ['channel', 'order_number', 'order_date', 'total_sales', 'total_cost'];
@@ -87,6 +81,12 @@ Deno.serve(async (req) => {
     if (missingColumns.length > 0) {
       throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}. Colonnes requises: ${essentialColumns.join(', ')}`);
     }
+
+    // Créer un mapping des colonnes
+    const columnMap: Record<string, number> = {};
+    headers.forEach((header, index) => {
+      columnMap[header] = index;
+    });
 
     // Traitement des données
     const dailyDataMap = new Map<string, DailyData>();
@@ -107,14 +107,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Extraire les données de la ligne
-        const channel = columns[0] || '';
-        const orderNumber = columns[1] || '';
-        const orderDate = columns[2] || '';
-        const totalSales = parseFloat(columns[11]) || 0;
-        const totalCost = parseFloat(columns[12]) || 0;
-        const totalMargin = parseFloat(columns[13]) || 0;
-        const marginRate = parseFloat(columns[14]) || 0;
+        // Extraire les données de la ligne en utilisant le mapping
+        const channel = columns[columnMap['channel']] || '';
+        const orderNumber = columns[columnMap['order_number']] || '';
+        const orderDate = columns[columnMap['order_date']] || '';
+        const totalSales = parseFloat(columns[columnMap['total_sales']]) || 0;
+        const totalCost = parseFloat(columns[columnMap['total_cost']]) || 0;
+        const totalMargin = parseFloat(columns[columnMap['total_margin']]) || 0;
+        const marginRate = parseFloat(columns[columnMap['margin_rate']]) || 0;
 
         // Ignorer les lignes avec des données vides ou nulles
         if (!channel || !orderDate || (totalSales === 0 && totalCost === 0)) {
