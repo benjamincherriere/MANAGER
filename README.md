@@ -1,16 +1,36 @@
-# Ma WebApp
+# Plus de Bulles - Webapp de Gestion de Projets
 
-Application React + TypeScript avec Supabase, configurée pour GitHub et Vercel.
+Application React + TypeScript avec Supabase pour la gestion des projets Plus de Bulles.
 
-## 🚀 Stack Technique
+## 🚀 Fonctionnalités
+
+### 📅 Module Suivi Fournisseurs
+- Gestion de la liste des fournisseurs
+- Enregistrement des rendez-vous avec notes
+- Alertes automatiques pour les fournisseurs non vus depuis 2 ans
+- Tableau de bord avec statistiques
+
+### 📋 Module Fiches Produits
+- Connexion à Google Sheets pour le suivi des produits
+- Compteur de produits à mettre en ligne
+- Objectif : arriver à 0 produits en attente
+- Taux de completion en temps réel
+
+### 💰 Module Analyse Financière
+- Import quotidien de fichiers CSV
+- Calcul automatique des marges
+- Synthèses quotidiennes et hebdomadaires
+- Rapports par email (à configurer)
+
+## 🛠️ Stack Technique
 
 - **Frontend**: React 18 + TypeScript + Vite
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
 - **Base de données**: Supabase
-- **Déploiement**: Vercel (recommandé) ou Netlify
+- **Déploiement**: Vercel (recommandé)
 
-## 📦 Installation locale
+## 📦 Installation
 
 1. Clonez le repository
 2. Installez les dépendances : `npm install`
@@ -20,45 +40,68 @@ Application React + TypeScript avec Supabase, configurée pour GitHub et Vercel.
 ## 🗄️ Configuration Supabase
 
 1. Créez un projet sur [supabase.com](https://supabase.com)
-2. Récupérez votre URL et votre clé anonyme
-3. Créez un fichier `.env` basé sur `.env.example`
-4. Ajoutez vos clés Supabase
+2. Cliquez sur "Connect to Supabase" dans l'interface
+3. Les migrations seront automatiquement appliquées
 
-## 🚢 Déploiement
+### Tables créées automatiquement :
+- `suppliers` : Fournisseurs
+- `meetings` : Rendez-vous avec fournisseurs
+- `financial_data` : Données financières quotidiennes
 
-### Vercel (recommandé)
-1. Connectez votre repo GitHub à Vercel
-2. Ajoutez les variables d'environnement Supabase
-3. Déployez !
+## 🚢 Déploiement sur Vercel
 
-### Netlify
-1. Connectez votre repo à Netlify
-2. Build command: `npm run build`
-3. Publish directory: `dist`
-4. Ajoutez les variables d'environnement
+1. Poussez votre code sur GitHub
+2. Connectez votre repo à Vercel
+3. Ajoutez les variables d'environnement Supabase
+4. Déployez !
 
 ## 📁 Structure du projet
 
 ```
 src/
-├── App.tsx          # Composant principal
-├── main.tsx         # Point d'entrée
-├── index.css        # Styles Tailwind
-└── vite-env.d.ts    # Types Vite
+├── components/
+│   ├── SupplierModule.tsx    # Module fournisseurs
+│   ├── ProductModule.tsx     # Module produits
+│   └── FinanceModule.tsx     # Module financier
+├── App.tsx                   # Application principale
+├── main.tsx                  # Point d'entrée
+└── index.css                 # Styles Tailwind
 ```
 
-## 🛠️ Scripts disponibles
+## 🔧 Utilisation
 
-- `npm run dev` - Serveur de développement
-- `npm run build` - Build de production
-- `npm run preview` - Aperçu du build
-- `npm run lint` - Linting ESLint
+### Module Fournisseurs
+1. Ajoutez vos fournisseurs via le bouton "Ajouter un fournisseur"
+2. Enregistrez vos rendez-vous avec la date et des notes
+3. Surveillez les alertes pour les fournisseurs non vus depuis 2 ans
 
-## 🔧 Technologies utilisées
+### Module Produits
+1. Configurez l'accès à votre Google Sheet
+2. Le système compte automatiquement les produits à créer
+3. Objectif : atteindre 0 produits en attente
 
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- Supabase
-- ESLint
+### Module Finance
+1. Importez quotidiennement vos fichiers CSV
+2. Format requis : date, revenue, costs
+3. Les marges sont calculées automatiquement
+4. Configurez les rapports email
+
+## 📊 Format CSV pour les données financières
+
+```csv
+date,revenue,costs
+2024-01-15,1250.50,890.25
+2024-01-16,1180.75,820.40
+```
+
+## 🎯 Roadmap
+
+- [ ] Intégration complète Google Sheets API
+- [ ] Système d'envoi d'emails automatiques
+- [ ] Graphiques et visualisations avancées
+- [ ] Export des données en PDF
+- [ ] Notifications push pour les alertes
+
+## 📞 Support
+
+Pour toute question ou suggestion d'amélioration, n'hésitez pas à ouvrir une issue sur GitHub.
