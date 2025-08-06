@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, AlertTriangle, Edit2, Trash2, Eye } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { Database } from '../types/supabase';
 
-const supabase = createClient(
+const supabase = createClient<Database>(
   import.meta.env.VITE_SUPABASE_URL || '',
   import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 );
@@ -32,6 +33,8 @@ const SupplierModule: React.FC = () => {
   const [showAddMeeting, setShowAddMeeting] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   // Form states
   const [supplierForm, setSupplierForm] = useState({
@@ -82,35 +85,86 @@ const SupplierModule: React.FC = () => {
 
   const addSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    
+    // Validation
+    if (!supplierForm.name.trim()) {
+      setError('Le nom du fournisseur est obligatoire');
+      return;
+    }
+    
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('suppliers')
-        .insert([supplierForm]);
+        .insert([{
+          name: supplierForm.name.trim(),
+          contact_person: supplierForm.contact_person.trim() || null,
+          email: supplierForm.email.trim() || null,
+          phone: supplierForm.phone.trim() || null
+        }])
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        throw new Error(`Erreur lors de l'ajout: ${error.message}`);
+      }
 
+      setSuccess('Fournisseur ajouté avec succès !');
       setSupplierForm({ name: '', contact_person: '', email: '', phone: '' });
-      setShowAddSupplier(false);
-      loadData();
+      
+      // Fermer le modal après 1.5 secondes
+      setTimeout(() => {
+        setShowAddSupplier(false);
+        setSuccess(null);
+      }, 1500);
+      
+      await loadData();
     } catch (error) {
       console.error('Erreur lors de l\'ajout:', error);
+      setError(error instanceof Error ? error.message : 'Une erreur est survenue');
     }
   };
 
   const addMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    
+    // Validation
+    if (!meetingForm.supplier_id || !meetingForm.meeting_date) {
+      setError('Le fournisseur et la date sont obligatoires');
+      return;
+    }
+    
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('meetings')
-        .insert([meetingForm]);
+        .insert([{
+          supplier_id: meetingForm.supplier_id,
+          meeting_date: meetingForm.meeting_date,
+          notes: meetingForm.notes.trim() || null
+        }])
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        throw new Error(`Erreur lors de l'ajout: ${error.message}`);
+      }
 
+      setSuccess('Rendez-vous enregistré avec succès !');
       setMeetingForm({ supplier_id: '', meeting_date: '', notes: '' });
-      setShowAddMeeting(false);
-      loadData();
+      
+      // Fermer le modal après 1.5 secondes
+      setTimeout(() => {
+        setShowAddMeeting(false);
+        setSuccess(null);
+      }, 1500);
+      
+      await loadData();
     } catch (error) {
       console.error('Erreur lors de l\'ajout:', error);
+      setError(error instanceof Error ? error.message : 'Une erreur est survenue');
     }
   };
 
@@ -161,6 +215,25 @@ const SupplierModule: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Messages d'erreur et succès globaux */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
+            <p className="text-red-800">{error}</p>
+          </div>
+        </div>
+      )}
+      
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <Eye className="h-5 w-5 text-green-600 mr-2" />
+            <p className="text-green-800">{success}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header with stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
@@ -327,6 +400,19 @@ const SupplierModule: React.FC = () => {
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Ajouter un fournisseur</h3>
             <form onSubmit={addSupplier} className="space-y-4">
+              {/* Messages dans le modal */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded p-3">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              )}
+              
+              {success && (
+                <div className="bg-green-50 border border-green-200 rounded p-3">
+                  <p className="text-sm text-green-800">{success}</p>
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nom du fournisseur *
@@ -375,7 +461,11 @@ const SupplierModule: React.FC = () => {
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowAddSupplier(false)}
+                  onClick={() => {
+                    setShowAddSupplier(false);
+                    setError(null);
+                    setSuccess(null);
+                  }}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Annuler
@@ -398,6 +488,19 @@ const SupplierModule: React.FC = () => {
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Enregistrer un rendez-vous</h3>
             <form onSubmit={addMeeting} className="space-y-4">
+              {/* Messages dans le modal */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded p-3">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              )}
+              
+              {success && (
+                <div className="bg-green-50 border border-green-200 rounded p-3">
+                  <p className="text-sm text-green-800">{success}</p>
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Fournisseur *
@@ -443,7 +546,11 @@ const SupplierModule: React.FC = () => {
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowAddMeeting(false)}
+                  onClick={() => {
+                    setShowAddMeeting(false);
+                    setError(null);
+                    setSuccess(null);
+                  }}
                   className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Annuler
