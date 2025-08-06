@@ -189,7 +189,7 @@ const FinanceModule: React.FC = () => {
         const dateIndex = headers.findIndex(h => h.includes('date'));
         const quantityIndex = headers.findIndex(h => h.includes('quantit'));
         const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
-        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d'achat'));
+        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
         
         if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
           throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
