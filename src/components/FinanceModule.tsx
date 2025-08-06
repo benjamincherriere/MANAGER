@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, TrendingUp, DollarSign, Calendar, AlertCircle, FileText, Settings, RefreshCw, Brain, Mail } from 'lucide-react';
+import { Upload, Download, TrendingUp, DollarSign, Calendar, AlertCircle, FileText, Settings, RefreshCw, Brain, Mail, Gift, TrendingDown } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
@@ -15,6 +15,8 @@ interface FinancialData {
   costs: number;
   margin: number;
   margin_percentage: number;
+  discounts?: number;
+  cashback?: number;
   created_at: string;
 }
 
@@ -78,6 +80,13 @@ const FinanceModule: React.FC = () => {
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [channelData, setChannelData] = useState<ChannelData[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'channels'>('overview');
+  const [totals, setTotals] = useState({
+    totalDiscounts: 0,
+    totalCashback: 0,
+    totalRevenue: 0,
+    totalCosts: 0,
+    totalMargin: 0
+  });
 
   const CHANNEL_COLORS = [
     '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
@@ -93,12 +102,31 @@ const FinanceModule: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('financial_data')
-        .select('*')
+        .select('*, discounts, cashback')
         .order('date', { ascending: false })
         .limit(30);
 
       if (error) throw error;
       setFinancialData(data || []);
+      
+      // Calculer les totaux
+      if (data && data.length > 0) {
+        const calculatedTotals = data.reduce((acc, item) => ({
+          totalDiscounts: acc.totalDiscounts + (item.discounts || 0),
+          totalCashback: acc.totalCashback + (item.cashback || 0),
+          totalRevenue: acc.totalRevenue + item.revenue,
+          totalCosts: acc.totalCosts + item.costs,
+          totalMargin: acc.totalMargin + item.margin
+        }), {
+          totalDiscounts: 0,
+          totalCashback: 0,
+          totalRevenue: 0,
+          totalCosts: 0,
+          totalMargin: 0
+        });
+        
+        setTotals(calculatedTotals);
+      }
       
       // Calculer les résumés hebdomadaires
       calculateWeeklySummaries(data || []);
@@ -898,7 +926,7 @@ const FinanceModule: React.FC = () => {
         <>
       {/* Stats du jour */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
@@ -928,6 +956,34 @@ const FinanceModule: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Marge Aujourd'hui</p>
                 <p className={`text-2xl font-bold ${stats.marginTrend === 'up' ? 'text-green-600' : stats.marginTrend === 'down' ? 'text-red-600' : 'text-gray-900'}`}>
                   {stats.todayMargin.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <TrendingDown className="h-6 w-6 text-orange-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Total Remises</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {totals.totalDiscounts.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Gift className="h-6 w-6 text-purple-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Total Cagnottes</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {totals.totalCashback.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
                 </p>
               </div>
             </div>
@@ -1003,6 +1059,8 @@ const FinanceModule: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Coûts
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remises</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cagnottes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Marge
                 </th>
@@ -1022,6 +1080,12 @@ const FinanceModule: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {item.costs.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-600">
+                    {(item.discounts || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-purple-600">
+                    {(item.cashback || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {item.margin.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
@@ -1220,38 +1284,39 @@ const FinanceModule: React.FC = () => {
         <div className="flex items-start">
           <FileText className="h-5 w-5 text-blue-600 mr-2 mt-0.5" />
           <div>
-            <h3 className="text-lg font-medium text-blue-800 mb-3">📋 Format CSV supporté</h3>
-            <div className="space-y-3 text-blue-700">
-              <p>
-                <strong>Format 1 - Standard :</strong>
-                <br />
-                <span className="text-xs ml-4 font-mono bg-white px-2 py-1 rounded border">date,revenue,costs,remise,cagnotte</span>
+            <h3 className="text-lg font-medium text-blue-800 mb-2">Format du fichier CSV</h3>
+            <div className="text-blue-700 space-y-1 text-sm">
+              <p className="text-sm text-gray-600 mb-4">
+                <strong>Format CSV attendu :</strong>
               </p>
-              <p>
-                <strong>Format 2 - Détaillé par commande :</strong>
-                <br />
-                <span className="text-xs ml-4 font-mono bg-white px-2 py-1 rounded border">date,quantité,prix_de_vente,prix_d_achat,remise,cagnotte</span>
-              </p>
-              <div className="bg-green-50 border border-green-200 rounded p-3 mt-3">
-                <p className="text-sm text-green-800">
-                  ✅ <strong>Nouveauté :</strong> Les colonnes "remise", "cagnotte", "reduction", "discount", "cashback", "fidelite" sont maintenant automatiquement détectées et traitées !
-                </p>
-                <ul className="text-xs text-green-700 mt-2 ml-4 list-disc">
-                  <li><strong>Remises :</strong> Déduites du chiffre d'affaires</li>
-                  <li><strong>Cagnottes :</strong> Ajoutées aux coûts (coût fidélité)</li>
-                </ul>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Format standard :</p>
+                  <div className="bg-gray-100 p-3 rounded font-mono text-sm">
+                    date,revenue,costs,remise,cagnotte<br/>
+                    2024-01-15,1250.50,890.25,50.00,25.00<br/>
+                    2024-01-16,1180.75,820.40,30.00,15.00
+                  </div>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Format détaillé (par commande) :</p>
+                  <div className="bg-gray-100 p-3 rounded font-mono text-sm">
+                    date,quantité,prix_de_vente,prix_d_achat,remise,cagnotte<br/>
+                    2024-01-15,5,25.00,18.00,10.00,5.00<br/>
+                    2024-01-15,3,30.00,20.00,5.00,3.00
+                  </div>
+                </div>
               </div>
-              <p className="text-sm">
-                <strong>Calculs automatiques :</strong>
-                <br />
-                <span className="text-xs ml-4">• Marge = Chiffre d'affaires - Coûts</span>
-                <br />
-                <span className="text-xs ml-4">• % Marge = (Marge / CA) × 100</span>
-                <br />
-                <span className="text-xs ml-4">• CA ajusté = CA - Remises</span>
-                <br />
-                <span className="text-xs ml-4">• Coûts ajustés = Coûts + Cagnottes</span>
-              </p>
+              
+              <div className="mt-4 p-3 bg-blue-50 rounded">
+                <p className="text-sm text-blue-800">
+                  <strong>💡 Traitement automatique :</strong><br/>
+                  • Les remises sont déduites du chiffre d'affaires<br/>
+                  • Les cagnottes sont ajoutées aux coûts<br/>
+                  • Les colonnes remise/cagnotte sont optionnelles
+                </p>
+              </div>
             </div>
           </div>
         </div>
