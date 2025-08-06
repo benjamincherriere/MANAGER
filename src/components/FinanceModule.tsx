@@ -186,9 +186,10 @@ const FinanceModule: React.FC = () => {
         const ordersByDate = new Map();
         
         // Trouver les index des colonnes pour le format commandes
+        const dateIndex = headers.findIndex(h => h.includes('date'));
         const quantityIndex = headers.findIndex(h => h.includes('quantit'));
         const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
-        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
+        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d'achat'));
         
         if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
           throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
@@ -212,14 +213,25 @@ const FinanceModule: React.FC = () => {
             const lineRevenue = quantity * salePrice;
             const lineCosts = quantity * purchasePrice;
 
-            // Utiliser la date du jour pour grouper (ou extraire d'une colonne date si présente)
-            const today = new Date().toISOString().split('T')[0];
-            
-            if (!ordersByDate.has(today)) {
-              ordersByDate.set(today, { revenue: 0, costs: 0 });
+            // Utiliser la date de la colonne ou la date du jour
+            let dateToUse;
+            if (dateIndex !== -1 && columns[dateIndex]) {
+              const parsedDate = new Date(columns[dateIndex]);
+              if (!isNaN(parsedDate.getTime())) {
+                dateToUse = parsedDate.toISOString().split('T')[0];
+              } else {
+                console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
+                dateToUse = new Date().toISOString().split('T')[0];
+              }
+            } else {
+              dateToUse = new Date().toISOString().split('T')[0];
             }
             
-            const dayData = ordersByDate.get(today);
+            if (!ordersByDate.has(dateToUse)) {
+              ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
+            }
+            
+            const dayData = ordersByDate.get(dateToUse);
             dayData.revenue += lineRevenue;
             dayData.costs += lineCosts;
             
@@ -952,11 +964,12 @@ const FinanceModule: React.FC = () => {
                     <div>
                       <p><strong>Format 1 - Données de vente :</strong></p>
                       <ul className="list-disc list-inside ml-2 text-xs">
+                        <li><code>date</code> : Date de la commande (optionnel)</li>
                         <li><code>quantité</code> : Nombre d'articles</li>
                         <li><code>prix de vente</code> : Prix unitaire de vente</li>
                         <li><code>prix d'achat</code> : Prix unitaire d'achat</li>
                       </ul>
-                      <p className="text-xs mt-1">→ Les marges sont calculées automatiquement</p>
+                      <p className="text-xs mt-1">→ Les marges sont calculées automatiquement par date</p>
                     </div>
                     <div>
                       <p><strong>Format 2 - Données agrégées :</strong></p>

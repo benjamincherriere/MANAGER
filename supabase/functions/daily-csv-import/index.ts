@@ -106,11 +106,10 @@ Deno.serve(async (req) => {
       // Format commandes : calculer les totaux par jour
       const ordersByDate = new Map();
       
+     const dateIndex = headers.findIndex(h => h.includes('date'));
       const quantityIndex = headers.findIndex(h => h.includes('quantit'));
       const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
       const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
-      )
-      )
       
       if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
         throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
@@ -130,41 +129,30 @@ Deno.serve(async (req) => {
             errorCount++;
             continue;
 
-        // Valider et parser la date
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) {
-          console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
-          errorCount++;
-          continue;
-        }
-
-        // Valider et parser les montants
-        const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
-        const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
-
-        if (isNaN(revenue) || isNaN(costs) || revenue < 0 || costs < 0) {
-          console.warn(`Ligne ${i + 1}: Montants invalides`);
-          errorCount++;
-          continue;
-        }
-
-        dataToInsert.push({
-          date: date.toISOString().split('T')[0],
-          revenue,
-          costs
-        });
+         }
 
           const lineRevenue = quantity * salePrice;
           const lineCosts = quantity * purchasePrice;
 
-          // Utiliser la date du jour pour grouper
-          const today = new Date().toISOString().split('T')[0];
+         // Utiliser la date de la colonne ou la date du jour
+         let dateToUse;
+         if (dateIndex !== -1 && columns[dateIndex]) {
+           const parsedDate = new Date(columns[dateIndex]);
+           if (!isNaN(parsedDate.getTime())) {
+             dateToUse = parsedDate.toISOString().split('T')[0];
+           } else {
+             console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
+             dateToUse = new Date().toISOString().split('T')[0];
+           }
+         } else {
+           dateToUse = new Date().toISOString().split('T')[0];
+         }
           
-          if (!ordersByDate.has(today)) {
-            ordersByDate.set(today, { revenue: 0, costs: 0 });
+         if (!ordersByDate.has(dateToUse)) {
+           ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
           }
           
-          const dayData = ordersByDate.get(today);
+         const dayData = ordersByDate.get(dateToUse);
           dayData.revenue += lineRevenue;
           dayData.costs += lineCosts;
           
@@ -172,8 +160,6 @@ Deno.serve(async (req) => {
         } catch (error) {
           console.warn(`Erreur ligne ${i + 1}:`, error);
           errorCount++;
-        successCount++;
-      }
 
       // Convertir en format pour insertion
       ordersByDate.forEach((data, date) => {
