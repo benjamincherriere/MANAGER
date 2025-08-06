@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Calendar, FileText, TrendingUp, Menu, X, Home } from 'lucide-react';
+import { Calendar, FileText, TrendingUp, Menu, X, Home, LogOut, User } from 'lucide-react';
+import { AuthProvider, useAuth } from './components/AuthProvider';
+import LoginForm from './components/LoginForm';
 import Dashboard from './components/Dashboard';
 import SupplierModule from './components/SupplierModule';
 import ProductModule from './components/ProductModule';
@@ -7,9 +9,22 @@ import FinanceModule from './components/FinanceModule';
 
 type Module = 'dashboard' | 'suppliers' | 'products' | 'finance';
 
-function App() {
+const AppContent: React.FC = () => {
+  const { user, signOut, loading } = useAuth();
   const [activeModule, setActiveModule] = useState<Module>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginForm />;
+  }
 
   const modules = [
     {
@@ -92,6 +107,25 @@ function App() {
             );
           })}
         </nav>
+        
+        {/* User info and logout */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <User className="h-4 w-4 text-gray-500 mr-2" />
+              <span className="text-sm text-gray-700 truncate">
+                {user.email}
+              </span>
+            </div>
+            <button
+              onClick={signOut}
+              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              title="Se déconnecter"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main content */}
@@ -110,6 +144,18 @@ function App() {
                 {modules.find(m => m.id === activeModule)?.name}
               </h2>
             </div>
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600 hidden sm:block">
+                {user.email}
+              </span>
+              <button
+                onClick={signOut}
+                className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                <LogOut className="h-4 w-4 mr-1" />
+                <span className="hidden sm:block">Déconnexion</span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -127,6 +173,14 @@ function App() {
         />
       )}
     </div>
+  );
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
