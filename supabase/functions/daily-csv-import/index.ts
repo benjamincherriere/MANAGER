@@ -91,35 +91,42 @@ Deno.serve(async (req) => {
       throw new Error('Le fichier CSV doit contenir au moins une ligne de données');
     }
 
-    const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
+    const headers = lines[0].toLowerCase().split(/[,;]/).map(h => h.trim().replace(/"/g, ''));
     
-    // Trouver les index des colonnes
-    const dateIndex = headers.findIndex(h => h.includes('date'));
-    const revenueIndex = headers.findIndex(h => 
-      h.includes('revenue') || h.includes('chiffre') || h.includes('ca')
+    // Détecter le format du CSV
+    const isOrderFormat = headers.some(h => 
+      h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
     );
-    const costsIndex = headers.findIndex(h => 
-      h.includes('costs') || h.includes('cout') || h.includes('charge')
-    );
-
-    if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
-      throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
-    }
-
-    // Parser les données
+    
     const dataToInsert = [];
     let successCount = 0;
     let errorCount = 0;
 
-    for (let i = 1; i < lines.length; i++) {
-      try {
-        const columns = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
-        
-        if (columns.length < 3) continue;
+    if (isOrderFormat) {
+      // Format commandes : calculer les totaux par jour
+      const ordersByDate = new Map();
+      
+      const quantityIndex = headers.findIndex(h => h.includes('quantit'));
+      const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
+      const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d'achat'));
+      
+      if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
+        throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
+      }
 
-        const dateStr = columns[dateIndex];
-        const revenueStr = columns[revenueIndex];
-        const costsStr = columns[costsIndex];
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+          
+          if (columns.length < headers.length) continue;
+
+          const quantity = parseFloat(columns[quantityIndex]) || 0;
+          const salePrice = parseFloat(columns[salePriceIndex]) || 0;
+          const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
+
+          if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+            errorCount++;
+            continue;
 
         // Valider et parser la date
         const date = new Date(dateStr);
@@ -144,10 +151,89 @@ Deno.serve(async (req) => {
           revenue,
           costs
         });
+
+          const lineRevenue = quantity * salePrice;
+          const lineCosts = quantity * purchasePrice;
+
+          // Utiliser la date du jour pour grouper
+          const today = new Date().toISOString().split('T')[0];
+          
+          if (!ordersByDate.has(today)) {
+            ordersByDate.set(today, { revenue: 0, costs: 0 });
+          }
+          
+          const dayData = ordersByDate.get(today);
+          dayData.revenue += lineRevenue;
+          dayData.costs += lineCosts;
+          
+          successCount++;
+        } catch (error) {
+          console.warn(`Erreur ligne ${i + 1}:`, error);
+          errorCount++;
         successCount++;
-      } catch (error) {
-        console.warn(`Erreur ligne ${i + 1}:`, error);
-        errorCount++;
+      }
+
+      // Convertir en format pour insertion
+      ordersByDate.forEach((data, date) => {
+        dataToInsert.push({
+          date,
+          revenue: Math.round(data.revenue * 100) / 100,
+          costs: Math.round(data.costs * 100) / 100
+        });
+      });
+      
+    } else {
+      // Format standard : date, revenue, costs
+      const dateIndex = headers.findIndex(h => h.includes('date'));
+      const revenueIndex = headers.findIndex(h => 
+        h.includes('revenue') || h.includes('chiffre') || h.includes('ca')
+      );
+      const costsIndex = headers.findIndex(h => 
+        h.includes('costs') || h.includes('cout') || h.includes('charge')
+      );
+
+      if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
+        throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
+      }
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+          
+          if (columns.length < 3) continue;
+
+          const dateStr = columns[dateIndex];
+          const revenueStr = columns[revenueIndex];
+          const costsStr = columns[costsIndex];
+
+          // Valider et parser la date
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) {
+            console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+            errorCount++;
+            continue;
+          }
+
+          // Valider et parser les montants
+          const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
+          const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+
+          if (isNaN(revenue) || isNaN(costs) || revenue < 0 || costs < 0) {
+            console.warn(`Ligne ${i + 1}: Montants invalides`);
+            errorCount++;
+            continue;
+          }
+
+          dataToInsert.push({
+            date: date.toISOString().split('T')[0],
+            revenue,
+            costs
+          });
+          successCount++;
+        } catch (error) {
+          console.warn(`Erreur ligne ${i + 1}:`, error);
+          errorCount++;
+        }
       }
     }
 

@@ -172,69 +172,133 @@ const FinanceModule: React.FC = () => {
 
       const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
       
-      // Vérifier les colonnes requises
-      const requiredColumns = ['date', 'revenue', 'costs'];
-      const missingColumns = requiredColumns.filter(col => 
-        !headers.some(h => h.includes(col) || h.includes(col.replace('revenue', 'chiffre')) || h.includes(col.replace('costs', 'cout')))
+      // Détecter le format du CSV
+      const isOrderFormat = headers.some(h => 
+        h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
       );
-
-      if (missingColumns.length > 0) {
-        throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}. Format attendu: date, revenue, costs`);
-      }
-
-      // Trouver les index des colonnes
-      const dateIndex = headers.findIndex(h => h.includes('date'));
-      const revenueIndex = headers.findIndex(h => h.includes('revenue') || h.includes('chiffre') || h.includes('ca'));
-      const costsIndex = headers.findIndex(h => h.includes('costs') || h.includes('cout') || h.includes('charge'));
-
-      // Parser les données
-      const dataToInsert = [];
+      
+      let dataToInsert = [];
       let successCount = 0;
       let errorCount = 0;
 
-      for (let i = 1; i < lines.length; i++) {
-        try {
-          const columns = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
-          
-          if (columns.length < 3) continue;
+      if (isOrderFormat) {
+        // Format commandes : calculer les totaux par jour
+        const ordersByDate = new Map();
+        
+        // Trouver les index des colonnes pour le format commandes
+        const quantityIndex = headers.findIndex(h => h.includes('quantit'));
+        const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
+        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d'achat'));
+        
+        if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
+          throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
+        }
 
-          const dateStr = columns[dateIndex];
-          const revenueStr = columns[revenueIndex];
-          const costsStr = columns[costsIndex];
+        for (let i = 1; i < lines.length; i++) {
+          try {
+            const columns = lines[i].split(';').map(c => c.trim().replace(/"/g, ''));
+            
+            if (columns.length < headers.length) continue;
 
-          // Valider et parser la date
-          const date = new Date(dateStr);
-          if (isNaN(date.getTime())) {
-            console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+            const quantity = parseFloat(columns[quantityIndex]) || 0;
+            const salePrice = parseFloat(columns[salePriceIndex]) || 0;
+            const purchasePrice = parseFloat(columns[purchasePriceIndex]) || 0;
+
+            if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+              errorCount++;
+              continue;
+            }
+
+            const lineRevenue = quantity * salePrice;
+            const lineCosts = quantity * purchasePrice;
+
+            // Utiliser la date du jour pour grouper (ou extraire d'une colonne date si présente)
+            const today = new Date().toISOString().split('T')[0];
+            
+            if (!ordersByDate.has(today)) {
+              ordersByDate.set(today, { revenue: 0, costs: 0 });
+            }
+            
+            const dayData = ordersByDate.get(today);
+            dayData.revenue += lineRevenue;
+            dayData.costs += lineCosts;
+            
+            successCount++;
+          } catch (error) {
+            console.warn(`Erreur ligne ${i + 1}:`, error);
             errorCount++;
-            continue;
           }
+        }
 
-          // Valider et parser les montants
-          const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
-          const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
-
-          if (isNaN(revenue) || isNaN(costs)) {
-            console.warn(`Ligne ${i + 1}: Montants invalides (revenue: "${revenueStr}", costs: "${costsStr}")`);
-            errorCount++;
-            continue;
-          }
-
-          if (revenue < 0 || costs < 0) {
-            console.warn(`Ligne ${i + 1}: Montants négatifs non autorisés`);
-            errorCount++;
-            continue;
-          }
-
+        // Convertir en format pour insertion
+        ordersByDate.forEach((data, date) => {
           dataToInsert.push({
-            date: date.toISOString().split('T')[0],
-            revenue,
-            costs
+            date,
+            revenue: Math.round(data.revenue * 100) / 100,
+            costs: Math.round(data.costs * 100) / 100
           });
-          successCount++;
-        } catch (error) {
-          console.warn(`Erreur ligne ${i + 1}:`, error);
-          errorCount++;
+        });
+        
+      } else {
+        // Format standard : date, revenue, costs
+        const requiredColumns = ['date', 'revenue', 'costs'];
+        const missingColumns = requiredColumns.filter(col => 
+          !headers.some(h => h.includes(col) || h.includes(col.replace('revenue', 'chiffre')) || h.includes(col.replace('costs', 'cout')))
+        );
+
+        if (missingColumns.length > 0) {
+          throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}. Format attendu: date, revenue, costs`);
+        }
+
+        // Trouver les index des colonnes
+        const dateIndex = headers.findIndex(h => h.includes('date'));
+        const revenueIndex = headers.findIndex(h => h.includes('revenue') || h.includes('chiffre') || h.includes('ca'));
+        const costsIndex = headers.findIndex(h => h.includes('costs') || h.includes('cout') || h.includes('charge'));
+
+        for (let i = 1; i < lines.length; i++) {
+          try {
+            const columns = lines[i].split(';').map(c => c.trim().replace(/"/g, ''));
+            
+            if (columns.length < 3) continue;
+
+            const dateStr = columns[dateIndex];
+            const revenueStr = columns[revenueIndex];
+            const costsStr = columns[costsIndex];
+
+            // Valider et parser la date
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) {
+              console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
+              errorCount++;
+              continue;
+            }
+
+            // Valider et parser les montants
+            const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
+            const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+
+            if (isNaN(revenue) || isNaN(costs)) {
+              console.warn(`Ligne ${i + 1}: Montants invalides (revenue: "${revenueStr}", costs: "${costsStr}")`);
+              errorCount++;
+              continue;
+            }
+
+            if (revenue < 0 || costs < 0) {
+              console.warn(`Ligne ${i + 1}: Montants négatifs non autorisés`);
+              errorCount++;
+              continue;
+            }
+
+            dataToInsert.push({
+              date: date.toISOString().split('T')[0],
+              revenue,
+              costs
+            });
+            successCount++;
+          } catch (error) {
+            console.warn(`Erreur ligne ${i + 1}:`, error);
+            errorCount++;
+          }
         }
       }
 
@@ -262,7 +326,8 @@ const FinanceModule: React.FC = () => {
       setShowUrlModal(false);
       setCsvUrl('');
       
-      alert(`✅ Import réussi !\n\n📊 ${successCount} lignes importées\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs)` : ''}\n\n💡 Les données existantes ont été mises à jour.`);
+      const formatType = isOrderFormat ? 'commandes' : 'standard';
+      alert(`✅ Import réussi !\n\n📊 Format détecté: ${formatType}\n📈 ${dataToInsert.length} jour(s) de données créé(s)\n📦 ${successCount} lignes traitées\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs)` : ''}\n\n💡 Les marges ont été calculées automatiquement.`);
 
     } catch (error) {
       console.error('Erreur import URL:', error);
@@ -882,17 +947,26 @@ const FinanceModule: React.FC = () => {
               <div className="bg-blue-50 border border-blue-200 rounded p-3">
                 <h4 className="text-sm font-medium text-blue-800 mb-2">Format CSV attendu :</h4>
                 <div className="text-xs text-blue-700 space-y-1">
-                  <p><strong>Colonnes requises :</strong></p>
-                  <ul className="list-disc list-inside ml-2">
-                    <li><code>date</code> : Format YYYY-MM-DD</li>
-                    <li><code>revenue</code> : Chiffre d'affaires</li>
-                    <li><code>costs</code> : Coûts</li>
-                  </ul>
-                  <p className="mt-2"><strong>Exemple :</strong></p>
-                  <code className="text-xs bg-white px-2 py-1 rounded border">
-                    date,revenue,costs<br/>
-                    2024-01-15,1250.50,890.25
-                  </code>
+                  <p><strong>2 formats supportés :</strong></p>
+                  <div className="space-y-2">
+                    <div>
+                      <p><strong>Format 1 - Données de vente :</strong></p>
+                      <ul className="list-disc list-inside ml-2 text-xs">
+                        <li><code>quantité</code> : Nombre d'articles</li>
+                        <li><code>prix de vente</code> : Prix unitaire de vente</li>
+                        <li><code>prix d'achat</code> : Prix unitaire d'achat</li>
+                      </ul>
+                      <p className="text-xs mt-1">→ Les marges sont calculées automatiquement</p>
+                    </div>
+                    <div>
+                      <p><strong>Format 2 - Données agrégées :</strong></p>
+                      <ul className="list-disc list-inside ml-2 text-xs">
+                        <li><code>date</code> : Format YYYY-MM-DD</li>
+                        <li><code>revenue</code> : Chiffre d'affaires total</li>
+                        <li><code>costs</code> : Coûts totaux</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
 
