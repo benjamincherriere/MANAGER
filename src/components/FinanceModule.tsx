@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, TrendingUp, TrendingDown, DollarSign, Mail, Calendar, FileText, AlertCircle, Brain, Send, Loader } from 'lucide-react';
+import { Upload, TrendingUp, TrendingDown, DollarSign, Mail, Calendar, FileText, AlertCircle, Brain, Send, Loader, PieChart } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, Tooltip, Legend, Pie } from 'recharts';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -23,6 +24,26 @@ interface WeeklySummary {
   totalCosts: number;
   averageMargin: number;
   marginTrend: 'up' | 'down' | 'stable';
+}
+
+interface OrderData {
+  orderNumber: string;
+  channel: string;
+  date: string;
+  totalRevenue: number;
+  totalCosts: number;
+  discount: number;
+  loyaltyUsed: number;
+  finalRevenue: number;
+  margin: number;
+  marginPercentage: number;
+  items: number;
+}
+
+interface ChannelData {
+  name: string;
+  value: number;
+  color: string;
 }
 
 const FinanceModule: React.FC = () => {
@@ -54,6 +75,14 @@ const FinanceModule: React.FC = () => {
   });
   const [showDailyImportModal, setShowDailyImportModal] = useState(false);
   const [savingDailyConfig, setSavingDailyConfig] = useState(false);
+  const [orders, setOrders] = useState<OrderData[]>([]);
+  const [channelData, setChannelData] = useState<ChannelData[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'channels'>('overview');
+
+  const CHANNEL_COLORS = [
+    '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
+    '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
+  ];
 
   useEffect(() => {
     loadFinancialData();
@@ -155,12 +184,28 @@ const FinanceModule: React.FC = () => {
       if (isOrderFormat) {
         // Format commandes : calculer les totaux par jour
         const ordersByDate = new Map();
+        const orderMap = new Map<string, OrderData>();
+        const channelMap = new Map<string, number>();
         
         // Trouver les index des colonnes pour le format commandes
         const dateIndex = headers.findIndex(h => h.includes('date'));
+        const channelIndex = headers.findIndex(h => h.includes('chanel') || h.includes('channel'));
+        const orderIndex = headers.findIndex(h => h.includes('numero') && h.includes('commande'));
         const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('quantit'));
         const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
         const purchasePriceIndex = headers.findIndex(h => h.includes('prix achat') || h.includes('prix d\'achat'));
+        const discountIndex = headers.findIndex(h => h.includes('remise') || h.includes('discount'));
+        const loyaltyIndex = headers.findIndex(h => h.includes('cagnotte') || h.includes('loyalty'));
+        
+        console.log('🔍 Colonnes détectées:');
+        console.log(`Date: ${dateIndex} (${headers[dateIndex] || 'non trouvée'})`);
+        console.log(`Channel: ${channelIndex} (${headers[channelIndex] || 'non trouvée'})`);
+        console.log(`Numéro commande: ${orderIndex} (${headers[orderIndex] || 'non trouvée'})`);
+        console.log(`Quantité: ${quantityIndex} (${headers[quantityIndex] || 'non trouvée'})`);
+        console.log(`Prix vente: ${salePriceIndex} (${headers[salePriceIndex] || 'non trouvée'})`);
+        console.log(`Prix achat: ${purchasePriceIndex} (${headers[purchasePriceIndex] || 'non trouvée'})`);
+        console.log(`Remise: ${discountIndex} (${headers[discountIndex] || 'non trouvée'})`);
+        console.log(`Cagnotte: ${loyaltyIndex} (${headers[loyaltyIndex] || 'non trouvée'})`);
         
         if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
           throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
@@ -175,6 +220,10 @@ const FinanceModule: React.FC = () => {
             const quantity = parseFloat(columns[quantityIndex]?.replace(/[^\d.-]/g, '')) || 0;
             const salePrice = parseFloat(columns[salePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
             const purchasePrice = parseFloat(columns[purchasePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            const discount = discountIndex !== -1 ? parseFloat(columns[discountIndex]) || 0 : 0;
+            const loyaltyUsed = loyaltyIndex !== -1 ? parseFloat(columns[loyaltyIndex]) || 0 : 0;
+            const channel = channelIndex !== -1 ? columns[channelIndex]?.trim() || 'Non spécifié' : 'Non spécifié';
+            const orderNumber = orderIndex !== -1 ? columns[orderIndex]?.trim() || `Order-${i}` : `Order-${i}`;
 
             if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
               errorCount++;
@@ -209,6 +258,34 @@ const FinanceModule: React.FC = () => {
               dateToUse = new Date().toISOString().split('T')[0];
             }
             
+            // Traitement des commandes
+            const orderKey = `${orderNumber}-${dateToUse}`;
+            if (!orderMap.has(orderKey)) {
+              orderMap.set(orderKey, {
+                orderNumber,
+                channel,
+                date: dateToUse,
+                totalRevenue: 0,
+                totalCosts: 0,
+                discount: 0,
+                loyaltyUsed: 0,
+                finalRevenue: 0,
+                margin: 0,
+                marginPercentage: 0,
+                items: 0
+              });
+            }
+            
+            const order = orderMap.get(orderKey)!;
+            order.totalRevenue += lineRevenue;
+            order.totalCosts += lineCosts;
+            order.discount = Math.max(order.discount, discount); // Prendre la remise max de la commande
+            order.loyaltyUsed = Math.max(order.loyaltyUsed, loyaltyUsed); // Prendre la cagnotte max
+            order.items += quantity;
+            
+            // Traitement des channels
+            channelMap.set(channel, (channelMap.get(channel) || 0) + lineRevenue);
+            
             if (!ordersByDate.has(dateToUse)) {
               ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
             }
@@ -223,6 +300,30 @@ const FinanceModule: React.FC = () => {
             errorCount++;
           }
         }
+        
+        // Finaliser les calculs des commandes
+        const ordersArray: OrderData[] = [];
+        orderMap.forEach(order => {
+          order.finalRevenue = order.totalRevenue - order.discount - order.loyaltyUsed;
+          order.margin = order.finalRevenue - order.totalCosts;
+          order.marginPercentage = order.finalRevenue > 0 ? (order.margin / order.finalRevenue) * 100 : 0;
+          ordersArray.push(order);
+        });
+        
+        // Préparer les données des channels
+        const channelsArray: ChannelData[] = [];
+        let colorIndex = 0;
+        channelMap.forEach((value, name) => {
+          channelsArray.push({
+            name,
+            value,
+            color: CHANNEL_COLORS[colorIndex % CHANNEL_COLORS.length]
+          });
+          colorIndex++;
+        });
+        
+        setOrders(ordersArray.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setChannelData(channelsArray.sort((a, b) => b.value - a.value));
 
         // Convertir en format pour insertion
         ordersByDate.forEach((data, date) => {
@@ -741,6 +842,50 @@ const FinanceModule: React.FC = () => {
         </div>
       </div>
 
+      {/* Navigation Tabs */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8 px-6">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'overview'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <DollarSign className="h-4 w-4 inline mr-2" />
+              Vue d'ensemble
+            </button>
+            <button
+              onClick={() => setActiveTab('channels')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'channels'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <PieChart className="h-4 w-4 inline mr-2" />
+              Répartition par Channel
+            </button>
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'orders'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <FileText className="h-4 w-4 inline mr-2" />
+              Détail des Commandes
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <>
       {/* Stats du jour */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1078,6 +1223,205 @@ const FinanceModule: React.FC = () => {
           </div>
         </div>
       </div>
+        </>
+      )}
+
+      {/* Channels Tab */}
+      {activeTab === 'channels' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-6">Répartition du CA par Channel</h3>
+            
+            {channelData.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Graphique en camembert */}
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={channelData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
+                      >
+                        {channelData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value: number) => [
+                          `${value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}`,
+                          'Chiffre d\'affaires'
+                        ]}
+                      />
+                      <Legend />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                {/* Tableau des channels */}
+                <div>
+                  <div className="space-y-3">
+                    {channelData.map((channel, index) => {
+                      const percentage = (channel.value / channelData.reduce((sum, c) => sum + c.value, 0)) * 100;
+                      return (
+                        <div key={channel.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center">
+                            <div 
+                              className="w-4 h-4 rounded-full mr-3"
+                              style={{ backgroundColor: channel.color }}
+                            ></div>
+                            <span className="font-medium text-gray-900">{channel.name}</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-gray-900">
+                              {channel.value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {percentage.toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <PieChart className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>Aucune donnée de channel disponible</p>
+                <p className="text-sm">Importez un fichier CSV avec une colonne "Channel" pour voir la répartition</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Orders Tab */}
+      {activeTab === 'orders' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Détail des Commandes</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {orders.length} commandes • Marge moyenne: {
+                  orders.length > 0 
+                    ? (orders.reduce((sum, o) => sum + o.marginPercentage, 0) / orders.length).toFixed(1)
+                    : '0'
+                }%
+              </p>
+            </div>
+            
+            {orders.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Commande
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Channel
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Articles
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        CA Brut
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Remises
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        CA Net
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Coûts
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Marge
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        %
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {orders.map((order, index) => (
+                      <tr key={`${order.orderNumber}-${order.date}`} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {order.orderNumber}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {order.channel}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(order.date).toLocaleDateString('fr-FR')}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {order.items}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {order.totalRevenue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {(order.discount + order.loyaltyUsed) > 0 ? (
+                            <div className="text-red-600">
+                              -{(order.discount + order.loyaltyUsed).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                              {order.discount > 0 && order.loyaltyUsed > 0 && (
+                                <div className="text-xs text-gray-500">
+                                  Remise: {order.discount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}<br/>
+                                  Cagnotte: {order.loyaltyUsed.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {order.finalRevenue.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {order.totalCosts.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className={order.margin >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            {order.margin.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <span className={`${
+                            order.marginPercentage >= 20 ? 'text-green-600' :
+                            order.marginPercentage >= 10 ? 'text-yellow-600' : 'text-red-600'
+                          }`}>
+                            {order.marginPercentage.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>Aucune commande disponible</p>
+                <p className="text-sm">Importez un fichier CSV pour voir le détail des commandes</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modal Configuration API */}
       {showApiKeyModal && (
