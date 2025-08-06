@@ -27,25 +27,38 @@ const ProductModule: React.FC = () => {
     setError(null);
     
     try {
-      if (!apiKey) {
-        // Si pas de clé API, utiliser les données publiques CSV
-        await loadFromPublicSheet();
-      } else {
-        // Utiliser l'API Google Sheets avec la clé
-        await loadFromGoogleSheetsAPI();
-      }
+      // Toujours essayer d'abord la méthode CSV publique
+      await loadFromPublicSheet();
       
       setLastUpdate(new Date());
     } catch (err) {
-      setError('Erreur lors du chargement des données. Vérifiez que votre feuille est accessible publiquement.');
-      console.error('Erreur:', err);
-      
-      // Fallback sur les données simulées en cas d'erreur
-      setProductStats({
-        totalProducts: 82,
-        productsToCreate: 82,
-        completionRate: 0
-      });
+      // Si la méthode CSV échoue et qu'on a une clé API, essayer l'API
+      if (apiKey) {
+        try {
+          await loadFromGoogleSheetsAPI();
+          setLastUpdate(new Date());
+        } catch (apiErr) {
+          setError('Erreur lors du chargement des données. Vérifiez que votre feuille est accessible publiquement ou que votre clé API est valide.');
+          console.error('Erreur API:', apiErr);
+          
+          // Fallback sur les données simulées
+          setProductStats({
+            totalProducts: 82,
+            productsToCreate: 82,
+            completionRate: 0
+          });
+        }
+      } else {
+        setError('Erreur lors du chargement des données. Vérifiez que votre feuille est accessible publiquement.');
+        console.error('Erreur CSV:', err);
+        
+        // Fallback sur les données simulées
+        setProductStats({
+          totalProducts: 82,
+          productsToCreate: 82,
+          completionRate: 0
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -55,13 +68,28 @@ const ProductModule: React.FC = () => {
     // Utiliser l'export CSV public de Google Sheets
     const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
     
-    const response = await fetch(csvUrl);
+    const response = await fetch(csvUrl, {
+      mode: 'cors',
+      headers: {
+        'Accept': 'text/csv'
+      }
+    });
+    
     if (!response.ok) {
-      throw new Error('Impossible d\'accéder à la feuille. Assurez-vous qu\'elle est publique.');
+      throw new Error(`HTTP ${response.status}: Impossible d'accéder à la feuille. Assurez-vous qu'elle est publique.`);
     }
     
     const csvText = await response.text();
+    
+    if (!csvText || csvText.trim() === '') {
+      throw new Error('La feuille semble vide ou inaccessible.');
+    }
+    
     const lines = csvText.split('\n').filter(line => line.trim());
+    
+    if (lines.length <= 1) {
+      throw new Error('Aucune donnée trouvée dans la feuille.');
+    }
     
     // Ignorer la ligne d'en-tête
     const dataLines = lines.slice(1);
@@ -90,15 +118,24 @@ const ProductModule: React.FC = () => {
   };
 
   const loadFromGoogleSheetsAPI = async () => {
+    if (!apiKey) {
+      throw new Error('Aucune clé API fournie.');
+    }
+    
     const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SHEET_NAME}!A:F?key=${apiKey}`;
     
     const response = await fetch(apiUrl);
     if (!response.ok) {
-      throw new Error('Erreur API Google Sheets. Vérifiez votre clé API.');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Erreur API Google Sheets (${response.status}): ${errorData.error?.message || 'Vérifiez votre clé API.'}`);
     }
     
     const data = await response.json();
     const rows = data.values || [];
+    
+    if (rows.length <= 1) {
+      throw new Error('Aucune donnée trouvée dans la feuille via l\'API.');
+    }
     
     // Ignorer la ligne d'en-tête
     const dataRows = rows.slice(1);
