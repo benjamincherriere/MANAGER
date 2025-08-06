@@ -363,96 +363,226 @@ const FinanceModule: React.FC = () => {
           order.margin = order.finalRevenue - order.totalCosts;
           order.marginPercentage = order.finalRevenue > 0 ? (order.margin / order.finalRevenue) * 100 : 0;
           ordersArray.push(order);
-        });
-        
-        // Préparer les données des channels
-        const channelsArray: ChannelData[] = [];
-        let colorIndex = 0;
-        channelMap.forEach((value, name) => {
-          channelsArray.push({
-            name,
-            value,
-            color: CHANNEL_COLORS[colorIndex % CHANNEL_COLORS.length]
-          });
-          colorIndex++;
-        });
-        
-        setOrders(ordersArray.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        setChannelData(channelsArray.sort((a, b) => b.value - a.value));
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-        // Convertir en format pour insertion
-        ordersByDate.forEach((data, date) => {
-          dataToInsert.push({
-            date,
-            revenue: Math.round(data.revenue * 100) / 100,
-            costs: Math.round(data.costs * 100) / 100
-          });
-        });
-        
-      } else {
-        // Format standard : date, revenue, costs
-        // Trouver les index des colonnes
-        const dateIndex = headers.findIndex(h => h.includes('date'));
-        const revenueIndex = headers.findIndex(h => h.includes('revenue') || h.includes('chiffre') || h.includes('ca'));
-        const costsIndex = headers.findIndex(h => h.includes('costs') || h.includes('cout') || h.includes('charge'));
+    // Vérifier le type de fichier
+    const isCSV = file.name.toLowerCase().endsWith('.csv') || 
+                  file.type === 'text/csv' || 
+                  file.type === 'application/csv' ||
+                  file.type === 'text/plain';
+                  
+    if (!isCSV) {
+      alert('❌ Veuillez sélectionner un fichier CSV (.csv)');
+      return;
+    }
 
-        if (dateIndex === -1 || revenueIndex === -1 || costsIndex === -1) {
-          throw new Error('Colonnes manquantes dans le CSV. Format attendu: date, revenue, costs');
-        }
+    setUploading(true);
+    
+    try {
+      const text = await file.text();
+      
+      if (!text || text.trim() === '') {
+        throw new Error('Le fichier CSV semble vide');
+      }
 
-        for (let i = 1; i < lines.length; i++) {
-          try {
-            const columns = lines[i].split(separator).map(c => c.trim().replace(/"/g, ''));
-            
-            if (columns.length < 3) continue;
+      console.log('📄 Fichier CSV chargé, taille:', text.length, 'caractères');
 
-            const dateStr = columns[dateIndex];
-            const revenueStr = columns[revenueIndex];
-            const costsStr = columns[costsIndex];
+      // Parser le CSV - votre format utilise probablement des virgules
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      
+      if (lines.length <= 1) {
+        throw new Error('Le fichier CSV doit contenir au moins une ligne de données en plus de l\'en-tête');
+      }
 
-            // Valider et parser la date
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) {
-              console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}"`);
-              errorCount++;
-              continue;
-            }
+      console.log('📋 Nombre de lignes:', lines.length);
+      
+      // Analyser l'en-tête - votre format exact
+      const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
+      console.log('📊 En-têtes détectés:', headers);
+      
+      // Mapping exact pour votre format Plus de Bulles
+      const columnMap = {
+        channel: headers.findIndex(h => h === 'channel'),
+        orderNumber: headers.findIndex(h => h === 'order_number'), 
+        orderDate: headers.findIndex(h => h === 'order_date'),
+        productRef: headers.findIndex(h => h === 'product_ref'),
+        productName: headers.findIndex(h => h === 'product_name'),
+        brandName: headers.findIndex(h => h === 'brand_name'),
+        quantity: headers.findIndex(h => h === 'quantity'),
+        unitSellingPrice: headers.findIndex(h => h === 'unit_selling_price'),
+        unitPurchasePrice: headers.findIndex(h => h === 'unit_purchase_price'),
+        discount: headers.findIndex(h => h === 'discount'),
+        rewardCredit: headers.findIndex(h => h === 'reward_credit'),
+        totalSales: headers.findIndex(h => h === 'total_sales'),
+        totalCost: headers.findIndex(h => h === 'total_cost'),
+        totalMargin: headers.findIndex(h => h === 'total_margin'),
+        marginRate: headers.findIndex(h => h === 'margin_rate')
+      };
+      
+      console.log('🗂️ Mapping des colonnes:', columnMap);
+      
+      // Vérifier que les colonnes essentielles sont présentes
+      const essentialColumns = ['orderDate', 'totalSales', 'totalCost'];
+      const missingColumns = essentialColumns.filter(col => columnMap[col] === -1);
+      
+      if (missingColumns.length > 0) {
+        throw new Error(`Colonnes essentielles manquantes: ${missingColumns.join(', ')}`);
+      }
 
-            // Valider et parser les montants
-            const revenue = parseFloat(revenueStr.replace(/[^\d.-]/g, ''));
-            const costs = parseFloat(costsStr.replace(/[^\d.-]/g, ''));
+      // Structures pour l'agrégation
+      const ordersByDate = new Map<string, {
+        revenue: number;
+        costs: number; 
+        discounts: number;
+        cashback: number;
+        orders: Set<string>;
+        channels: Set<string>;
+      }>();
+      
+      const channelsByDate = new Map<string, Map<string, {
+        revenue: number;
+        costs: number;
+        orders: Set<string>;
+      }>>();
+      
+      let successCount = 0;
+      let errorCount = 0;
+      let skippedCount = 0;
 
-            if (isNaN(revenue) || isNaN(costs)) {
-              console.warn(`Ligne ${i + 1}: Montants invalides (revenue: "${revenueStr}", costs: "${costsStr}")`);
-              errorCount++;
-              continue;
-            }
-
-            if (revenue < 0 || costs < 0) {
-              console.warn(`Ligne ${i + 1}: Montants négatifs non autorisés`);
-              errorCount++;
-              continue;
-            }
-
-            dataToInsert.push({
-              date: date.toISOString().split('T')[0],
-              revenue,
-              costs
-            });
-            successCount++;
-          } catch (error) {
-            console.warn(`Erreur ligne ${i + 1}:`, error);
-            errorCount++;
+      // Traiter chaque ligne de données
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const line = lines[i].trim();
+          if (!line) {
+            skippedCount++;
+            continue;
           }
+          
+          const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
+          
+          if (columns.length !== headers.length) {
+            console.warn(`Ligne ${i + 1}: Nombre de colonnes incorrect (${columns.length} vs ${headers.length})`);
+            errorCount++;
+            continue;
+          }
+
+          // Extraire les données avec votre format exact
+          const channel = columns[columnMap.channel] || 'Non spécifié';
+          const orderNumber = columns[columnMap.orderNumber] || `Order-${i}`;
+          const orderDate = columns[columnMap.orderDate];
+          const quantity = parseFloat(columns[columnMap.quantity]) || 0;
+          const unitSellingPrice = parseFloat(columns[columnMap.unitSellingPrice]) || 0;
+          const unitPurchasePrice = parseFloat(columns[columnMap.unitPurchasePrice]) || 0;
+          const discount = parseFloat(columns[columnMap.discount]) || 0;
+          const rewardCredit = parseFloat(columns[columnMap.rewardCredit]) || 0;
+          const totalSales = parseFloat(columns[columnMap.totalSales]) || 0;
+          const totalCost = parseFloat(columns[columnMap.totalCost]) || 0;
+          const totalMargin = parseFloat(columns[columnMap.totalMargin]) || 0;
+          const marginRate = parseFloat(columns[columnMap.marginRate]) || 0;
+
+          // Utiliser les totaux directement (plus précis que de recalculer)
+          let lineRevenue = totalSales;
+          let lineCosts = totalCost;
+          let lineDiscount = discount;
+          let lineCashback = rewardCredit;
+
+          // Fallback sur le calcul si les totaux sont à 0 mais qu'on a les détails
+          if (lineRevenue === 0 && lineCosts === 0 && quantity > 0) {
+            lineRevenue = quantity * unitSellingPrice;
+            lineCosts = quantity * unitPurchasePrice;
+          }
+
+          // Ignorer les lignes sans données financières significatives
+          if (lineRevenue === 0 && lineCosts === 0) {
+            console.log(`Ligne ${i + 1}: Pas de données financières, ignorée`);
+            skippedCount++;
+            continue;
+          }
+
+          // Parser et valider la date
+          const parsedDate = new Date(orderDate);
+          if (isNaN(parsedDate.getTime())) {
+            console.warn(`Ligne ${i + 1}: Date invalide "${orderDate}"`);
+            errorCount++;
+            continue;
+          }
+
+          const dateKey = parsedDate.toISOString().split('T')[0];
+
+          // Agrégation par date pour financial_data
+          if (!ordersByDate.has(dateKey)) {
+            ordersByDate.set(dateKey, {
+              revenue: 0,
+              costs: 0,
+              discounts: 0,
+              cashback: 0,
+              orders: new Set(),
+              channels: new Set()
+            });
+          }
+
+          const dayData = ordersByDate.get(dateKey)!;
+          dayData.revenue += lineRevenue;
+          dayData.costs += lineCosts;
+          dayData.discounts += lineDiscount;
+          dayData.cashback += lineCashback;
+          dayData.orders.add(orderNumber);
+          dayData.channels.add(channel);
+
+          // Agrégation par canal et date pour les statistiques
+          if (!channelsByDate.has(dateKey)) {
+            channelsByDate.set(dateKey, new Map());
+          }
+
+          const dateChannels = channelsByDate.get(dateKey)!;
+          if (!dateChannels.has(channel)) {
+            dateChannels.set(channel, {
+              revenue: 0,
+              costs: 0,
+              orders: new Set()
+            });
+          }
+
+          const channelData = dateChannels.get(channel)!;
+          channelData.revenue += lineRevenue;
+          channelData.costs += lineCosts;
+          channelData.orders.add(orderNumber);
+
+          successCount++;
+
+        } catch (error) {
+          console.warn(`Erreur ligne ${i + 1}:`, error);
+          errorCount++;
         }
       }
 
-      if (dataToInsert.length === 0) {
+      if (ordersByDate.size === 0) {
         throw new Error('Aucune donnée valide trouvée dans le fichier CSV');
       }
 
+      // Préparer les données pour financial_data
+      const dataToInsert = [];
+      ordersByDate.forEach((data, date) => {
+        dataToInsert.push({
+          date,
+          revenue: Math.round(data.revenue * 100) / 100,
+          costs: Math.round(data.costs * 100) / 100,
+          discounts: Math.round(data.discounts * 100) / 100,
+          cashback: Math.round(data.cashback * 100) / 100
+        });
+      });
+
+      console.log('💾 Données à insérer:', dataToInsert);
+
+      // Vérifier la configuration Supabase
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        throw new Error('Configuration Supabase manquante. Vérifiez votre fichier .env');
+      }
+
       // Insérer en base de données
-      const { data, error } = await supabase
+      const { data: insertedData, error } = await supabase
         .from('financial_data')
         .upsert(dataToInsert, { 
           onConflict: 'date',
@@ -461,26 +591,148 @@ const FinanceModule: React.FC = () => {
         .select();
 
       if (error) {
+        console.error('❌ Erreur Supabase:', error);
         throw new Error(`Erreur base de données: ${error.message}`);
       }
-      
-      // Recharger les données après upload
+
+      console.log('✅ Données insérées avec succès:', insertedData);
+
+      // Préparer les statistiques par canal pour la visualisation
+      const channelStats = {};
+      const allChannels = new Set<string>();
+
+      channelsByDate.forEach((channels, date) => {
+        channels.forEach((data, channel) => {
+          allChannels.add(channel);
+          
+          if (!channelStats[channel]) {
+            channelStats[channel] = {
+              revenue: 0,
+              costs: 0,
+              orders: new Set(),
+              dates: []
+            };
+          }
+
+          channelStats[channel].revenue += data.revenue;
+          channelStats[channel].costs += data.costs;
+          data.orders.forEach(order => channelStats[channel].orders.add(order));
+          channelStats[channel].dates.push(date);
+        });
+      });
+
+      // Finaliser les stats des canaux
+      Object.keys(channelStats).forEach(channel => {
+        const stats = channelStats[channel];
+        stats.order_count = stats.orders.size;
+        stats.avg_order_value = stats.order_count > 0 ? stats.revenue / stats.order_count : 0;
+        stats.margin = stats.revenue - stats.costs;
+        stats.margin_rate = stats.revenue > 0 ? stats.margin / stats.revenue : 0;
+        delete stats.orders; // Supprimer pour la sérialisation JSON
+      });
+
+      // Sauvegarder les statistiques
+      try {
+        await supabase
+          .from('user_settings')
+          .upsert({
+            setting_key: 'channel_statistics',
+            setting_value: {
+              channels: channelStats,
+              last_update: new Date().toISOString(),
+              total_channels: allChannels.size
+            }
+          }, {
+            onConflict: 'setting_key'
+          });
+      } catch (statsError) {
+        console.warn('⚠️ Erreur sauvegarde des statistiques:', statsError);
+      }
+
+      // Recharger les données de l'interface
       await loadFinancialData();
       await loadChannelStats();
-      
-      // Afficher le résultat
-      const formatType = isOrderFormat ? 'commandes' : 'standard';
-      alert(`✅ Import réussi !\n\n📊 Format détecté: ${formatType}\n📈 ${dataToInsert.length} jour(s) de données créé(s) ou mis(es) à jour\n📦 ${successCount} lignes traitées avec succès\n${errorCount > 0 ? `⚠️ ${errorCount} lignes ignorées (erreurs de format)` : ''}\n\n💡 Les marges ont été calculées automatiquement.`);
-      
-      // Réinitialiser l'input file
+
+      // Créer les données pour la visualisation par canal
+      const channelDataArray: ChannelData[] = [];
+      let colorIndex = 0;
+      Object.entries(channelStats).forEach(([name, stats]: [string, any]) => {
+        channelDataArray.push({
+          name,
+          value: stats.revenue,
+          color: CHANNEL_COLORS[colorIndex % CHANNEL_COLORS.length]
+        });
+        colorIndex++;
+      });
+
+      setChannelData(channelDataArray.sort((a, b) => b.value - a.value));
+
+      // Message de succès détaillé
+      const uniqueOrders = new Set();
+      ordersByDate.forEach(data => {
+        data.orders.forEach(order => uniqueOrders.add(order));
+      });
+
+      const totalRevenue = dataToInsert.reduce((sum, item) => sum + item.revenue, 0);
+      const totalCosts = dataToInsert.reduce((sum, item) => sum + item.costs, 0);
+      const totalDiscounts = dataToInsert.reduce((sum, item) => sum + (item.discounts || 0), 0);
+      const totalCashback = dataToInsert.reduce((sum, item) => sum + (item.cashback || 0), 0);
+
+      const successMessage = [
+        '✅ Import Plus de Bulles réussi !',
+        '',
+        `📊 Format: Données de ventes détaillées`,
+        `📅 ${dataToInsert.length} jour(s) de données traité(s)`,
+        `🛍️ ${uniqueOrders.size} commande(s) unique(s)`,
+        `📈 CA total: ${totalRevenue.toLocaleString('fr-FR')}€`,
+        `💰 Coûts totaux: ${totalCosts.toLocaleString('fr-FR')}€`,
+        totalDiscounts > 0 ? `🎟️ Remises: ${totalDiscounts.toLocaleString('fr-FR')}€` : '',
+        totalCashback > 0 ? `🎁 Cagnottes: ${totalCashback.toLocaleString('fr-FR')}€` : '',
+        `📊 ${allChannels.size} canal(aux) détecté(s): ${Array.from(allChannels).join(', ')}`,
+        '',
+        `✅ ${successCount} lignes traitées`,
+        errorCount > 0 ? `⚠️ ${errorCount} erreurs` : '',
+        skippedCount > 0 ? `➡️ ${skippedCount} lignes ignorées` : '',
+        '',
+        '💡 Les marges ont été calculées automatiquement !'
+      ].filter(Boolean).join('\n');
+
+      alert(successMessage);
+
+      // Réinitialiser l'input
       event.target.value = '';
-      
+
     } catch (error) {
-      console.error('Erreur lors du traitement du fichier:', error);
-      alert(`❌ Erreur lors de l'import :\n\n${error instanceof Error ? error.message : 'Erreur inconnue'}\n\n💡 Conseils :\n• Vérifiez le format de votre fichier CSV\n• Colonnes requises pour commandes: quantité, prix de vente, prix d'achat\n• Colonnes requises pour format standard: date, revenue, costs`);
+      console.error('❌ Erreur complète:', error);
+      
+      const errorMessage = [
+        '❌ Erreur lors de l\'import Plus de Bulles:',
+        '',
+        error instanceof Error ? error.message : 'Erreur inconnue',
+        '',
+        '🔍 Vérifications:',
+        '• Le fichier contient-il les colonnes: order_date, total_sales, total_cost ?',
+        '• Les dates sont-elles au format YYYY-MM-DD ?',
+        '• La configuration Supabase est-elle correcte ?',
+        '',
+        '💡 Consultez la console développeur (F12) pour plus de détails'
+      ].join('\n');
+      
+      alert(errorMessage);
     } finally {
       setUploading(false);
     }
+  };
+
+  // AUSSI, AJOUTEZ CETTE FONCTION HELPER SI ELLE N'EXISTE PAS DÉJÀ
+  // (Cherchez si getSimulatedChannelData existe déjà dans le fichier)
+  const getSimulatedChannelData = (): ChannelData[] => {
+    return [
+      { name: 'Site Web', value: 15420.50, color: CHANNEL_COLORS[0] },
+      { name: 'Magasin Physical', value: 12350.75, color: CHANNEL_COLORS[1] },
+      { name: 'Marketplace', value: 8750.25, color: CHANNEL_COLORS[2] },
+      { name: 'B2B Direct', value: 6200.00, color: CHANNEL_COLORS[3] }
+    ];
   };
 
   const handleUrlImport = async () => {
