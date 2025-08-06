@@ -1220,15 +1220,38 @@ const FinanceModule: React.FC = () => {
         <div className="flex items-start">
           <FileText className="h-5 w-5 text-blue-600 mr-2 mt-0.5" />
           <div>
-            <h3 className="text-lg font-medium text-blue-800 mb-2">Format du fichier CSV</h3>
-            <div className="text-blue-700 space-y-1 text-sm">
-              <p>Votre fichier CSV doit contenir les colonnes suivantes :</p>
-              <ul className="list-disc list-inside ml-4 space-y-1">
-                <li><strong>date</strong> : Date au format YYYY-MM-DD</li>
-                <li><strong>revenue</strong> : Chiffre d'affaires du jour</li>
-                <li><strong>costs</strong> : Coûts du jour</li>
-              </ul>
-              <p className="mt-2">La marge et le pourcentage de marge seront calculés automatiquement.</p>
+            <h3 className="text-lg font-medium text-blue-800 mb-3">📋 Format CSV supporté</h3>
+            <div className="space-y-3 text-blue-700">
+              <p>
+                <strong>Format 1 - Standard :</strong>
+                <br />
+                <span className="text-xs ml-4 font-mono bg-white px-2 py-1 rounded border">date,revenue,costs,remise,cagnotte</span>
+              </p>
+              <p>
+                <strong>Format 2 - Détaillé par commande :</strong>
+                <br />
+                <span className="text-xs ml-4 font-mono bg-white px-2 py-1 rounded border">date,quantité,prix_de_vente,prix_d_achat,remise,cagnotte</span>
+              </p>
+              <div className="bg-green-50 border border-green-200 rounded p-3 mt-3">
+                <p className="text-sm text-green-800">
+                  ✅ <strong>Nouveauté :</strong> Les colonnes "remise", "cagnotte", "reduction", "discount", "cashback", "fidelite" sont maintenant automatiquement détectées et traitées !
+                </p>
+                <ul className="text-xs text-green-700 mt-2 ml-4 list-disc">
+                  <li><strong>Remises :</strong> Déduites du chiffre d'affaires</li>
+                  <li><strong>Cagnottes :</strong> Ajoutées aux coûts (coût fidélité)</li>
+                </ul>
+              </div>
+              <p className="text-sm">
+                <strong>Calculs automatiques :</strong>
+                <br />
+                <span className="text-xs ml-4">• Marge = Chiffre d'affaires - Coûts</span>
+                <br />
+                <span className="text-xs ml-4">• % Marge = (Marge / CA) × 100</span>
+                <br />
+                <span className="text-xs ml-4">• CA ajusté = CA - Remises</span>
+                <br />
+                <span className="text-xs ml-4">• Coûts ajustés = Coûts + Cagnottes</span>
+              </p>
             </div>
           </div>
         </div>
