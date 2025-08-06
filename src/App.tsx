@@ -31,12 +31,16 @@ function App() {
         setConnectionStatus('connected');
       } catch (error: any) {
         // Only log unexpected errors
-        if (error.code !== 'PGRST116' && error.code !== 'PGRST205') {
+        if (error && error.code !== 'PGRST116' && error.code !== 'PGRST205') {
           console.error('Erreur de connexion Supabase:', error);
           setConnectionStatus('error');
-        } else {
+        } else if (error && (error.code === 'PGRST116' || error.code === 'PGRST205')) {
           // Expected error - connection is working
           setConnectionStatus('connected');
+        } else {
+          // Handle case where error is null/undefined or has no code
+          console.error('Erreur de connexion Supabase:', error);
+          setConnectionStatus('error');
         }
       }
     };
