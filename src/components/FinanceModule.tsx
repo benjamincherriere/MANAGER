@@ -1358,7 +1358,7 @@ const FinanceModule: React.FC = () => {
                 {/* Graphique en camembert */}
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
+                    <PieChart>
                       <Pie
                         data={channelData}
                         cx="50%"
@@ -1379,7 +1379,7 @@ const FinanceModule: React.FC = () => {
                         ]}
                       />
                       <Legend />
-                    </RechartsPieChart>
+                    </PieChart>
                   </ResponsiveContainer>
                 </div>
                 
