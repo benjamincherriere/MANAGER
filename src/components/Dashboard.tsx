@@ -57,6 +57,20 @@ const Dashboard: React.FC = () => {
 
   const loadSupplierStats = async () => {
     try {
+      // Vérifier si Supabase est configuré
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        console.warn('Supabase non configuré, utilisation des données par défaut');
+        setStats(prev => ({
+          ...prev,
+          suppliers: {
+            total: 0,
+            overdue: 0,
+            meetingsThisYear: 0
+          }
+        }));
+        return;
+      }
+
       // Charger les fournisseurs
       const { data: suppliers, error: suppliersError } = await supabase
         .from('suppliers')
@@ -103,7 +117,16 @@ const Dashboard: React.FC = () => {
         }
       }));
     } catch (error) {
-      console.error('Erreur suppliers:', error);
+      console.warn('Impossible de charger les données fournisseurs, utilisation des données par défaut:', error);
+      // Fallback sur les données par défaut
+      setStats(prev => ({
+        ...prev,
+        suppliers: {
+          total: 0,
+          overdue: 0,
+          meetingsThisYear: 0
+        }
+      }));
     }
   };
 
@@ -114,7 +137,12 @@ const Dashboard: React.FC = () => {
       const SHEET_GID = '690830060';
       const csvUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
       
-      const response = await fetch(csvUrl, { mode: 'cors' });
+      const response = await fetch(csvUrl, { 
+        mode: 'cors',
+        headers: {
+          'Accept': 'text/csv, text/plain, application/csv'
+        }
+      });
       
       if (response.ok) {
         const csvText = await response.text();
@@ -160,12 +188,36 @@ const Dashboard: React.FC = () => {
         }
       }));
     } catch (error) {
-      console.error('Erreur products:', error);
+      console.warn('Impossible de charger les données produits depuis Google Sheets, utilisation des données par défaut:', error);
+      // Fallback sur les données par défaut en cas d'erreur réseau
+      setStats(prev => ({
+        ...prev,
+        products: {
+          total: 82,
+          toCreate: 82,
+          completionRate: 0
+        }
+      }));
     }
   };
 
   const loadFinanceStats = async () => {
     try {
+      // Vérifier si Supabase est configuré
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        console.warn('Supabase non configuré, utilisation des données par défaut');
+        setStats(prev => ({
+          ...prev,
+          finance: {
+            todayRevenue: 0,
+            todayMargin: 0,
+            marginTrend: 'stable',
+            daysAnalyzed: 0
+          }
+        }));
+        return;
+      }
+
       const { data: financialData, error } = await supabase
         .from('financial_data')
         .select('*')
@@ -196,9 +248,30 @@ const Dashboard: React.FC = () => {
             daysAnalyzed: count || 0
           }
         }));
+      } else {
+        // Aucune donnée financière trouvée
+        setStats(prev => ({
+          ...prev,
+          finance: {
+            todayRevenue: 0,
+            todayMargin: 0,
+            marginTrend: 'stable',
+            daysAnalyzed: 0
+          }
+        }));
       }
     } catch (error) {
-      console.error('Erreur finance:', error);
+      console.warn('Impossible de charger les données financières, utilisation des données par défaut:', error);
+      // Fallback sur les données par défaut
+      setStats(prev => ({
+        ...prev,
+        finance: {
+          todayRevenue: 0,
+          todayMargin: 0,
+          marginTrend: 'stable',
+          daysAnalyzed: 0
+        }
+      }));
     }
   };
 
