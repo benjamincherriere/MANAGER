@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, TrendingUp, DollarSign, Calendar, BarChart3, PieChart, Download, RefreshCw, AlertCircle, CheckCircle, Settings, Zap } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Cell, Pie } from 'recharts';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || '',
@@ -93,15 +93,15 @@ const FinanceModule: React.FC = () => {
         .from('user_settings')
         .select('setting_value')
         .eq('setting_key', 'channel_statistics')
-        .single();
+        .limit(1);
 
-      if (error || !data) {
+      if (error || !data || data.length === 0) {
         // Utiliser des données simulées si pas de stats
         setChannelData(getSimulatedChannelData());
         return;
       }
 
-      const stats = data.setting_value as any;
+      const stats = data[0].setting_value as any;
       if (stats.channels) {
         const channelDataArray: ChannelData[] = [];
         let colorIndex = 0;
