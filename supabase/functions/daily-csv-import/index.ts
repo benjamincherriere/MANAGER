@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     const missingColumns = essentialColumns.filter(col => !headers.includes(col));
     
     if (missingColumns.length > 0) {
-      throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}`);
+      throw new Error(`Colonnes manquantes: ${missingColumns.join(', ')}. Colonnes requises: ${essentialColumns.join(', ')}`);
     }
 
     // Traitement des données
