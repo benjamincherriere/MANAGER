@@ -145,7 +145,7 @@ const FinanceModule: React.FC = () => {
       
       // Détecter le format du CSV
       const isOrderFormat = headers.some(h => 
-        h.includes('commande') || h.includes('quantity') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix achat')
+        h.includes('commande') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix d\'achat')
       );
       
       let dataToInsert = [];
@@ -158,9 +158,9 @@ const FinanceModule: React.FC = () => {
         
         // Trouver les index des colonnes pour le format commandes
         const dateIndex = headers.findIndex(h => h.includes('date'));
-        const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('quantit'));
+        const quantityIndex = headers.findIndex(h => h.includes('quantit'));
         const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
-        const purchasePriceIndex = headers.findIndex(h => h.includes('prix achat') || h.includes('prix d\'achat'));
+        const purchasePriceIndex = headers.findIndex(h => h.includes('prix d\'achat') || h.includes('prix d\'achat'));
         
         if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
           throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
@@ -187,22 +187,11 @@ const FinanceModule: React.FC = () => {
             // Utiliser la date de la colonne ou la date du jour
             let dateToUse;
             if (dateIndex !== -1 && columns[dateIndex]) {
-              // Gérer le format DD/MM/YYYY
-              const dateStr = columns[dateIndex];
-              let parsedDate;
-              
-              if (dateStr.includes('/')) {
-                // Format DD/MM/YYYY
-                const [day, month, year] = dateStr.split('/');
-                parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-              } else {
-                parsedDate = new Date(dateStr);
-              }
-              
+              const parsedDate = new Date(columns[dateIndex]);
               if (!isNaN(parsedDate.getTime())) {
                 dateToUse = parsedDate.toISOString().split('T')[0];
               } else {
-                console.warn(`Ligne ${i + 1}: Date invalide "${dateStr}", utilisation de la date du jour`);
+                console.warn(`Ligne ${i + 1}: Date invalide "${columns[dateIndex]}", utilisation de la date du jour`);
                 dateToUse = new Date().toISOString().split('T')[0];
               }
             } else {
@@ -356,17 +345,25 @@ const FinanceModule: React.FC = () => {
       const lines = csvText.split('\n').filter(line => line.trim());
       
       if (lines.length <= 1) {
-        throw new Error('Le fichier CSV doit contenir au moins une ligne de données en plus de l\'en-tête');
+        throw new Error('Le fichier CSV doit contenir au moins une ligne de données');
       }
 
-      const headers = lines[0].toLowerCase().split(/[,;]/).map(h => h.trim().replace(/"/g, ''));
+      // Parser les en-têtes avec gestion des caractères spéciaux
+      const rawHeaders = lines[0].split(';').map(h => h.trim().replace(/"/g, ''));
+      const headers = rawHeaders.map(h => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+      
+      console.log('En-têtes détectés:', rawHeaders);
+      console.log('En-têtes normalisés:', headers);
       
       // Détecter le format du CSV
       const isOrderFormat = headers.some(h => 
-        h.includes('commande') || h.includes('quantity') || h.includes('quantit') || h.includes('prix de vente') || h.includes('prix achat')
+        h.includes('commande') || h.includes('quantity') || h.includes('quantit') || 
+        h.includes('prix de vente') || h.includes('prix achat') || h.includes('prix d\'achat')
       );
       
-      let dataToInsert = [];
+      console.log('Format détecté:', isOrderFormat ? 'Commandes' : 'Standard');
+      
+      const dataToInsert = [];
       let successCount = 0;
       let errorCount = 0;
 
@@ -374,27 +371,59 @@ const FinanceModule: React.FC = () => {
         // Format commandes : calculer les totaux par jour
         const ordersByDate = new Map();
         
-        // Trouver les index des colonnes pour le format commandes
+        // Recherche des colonnes avec plusieurs variantes possibles
         const dateIndex = headers.findIndex(h => h.includes('date'));
-        const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('quantit'));
-        const salePriceIndex = headers.findIndex(h => h.includes('prix de vente'));
-        const purchasePriceIndex = headers.findIndex(h => h.includes('prix achat') || h.includes('prix d\'achat'));
+        const quantityIndex = headers.findIndex(h => 
+          h.includes('quantity') || h.includes('quantit') || h.includes('qte')
+        );
+        const salePriceIndex = headers.findIndex(h => 
+          h.includes('prix de vente') || h.includes('prix vente') || h.includes('sale price')
+        );
+        const purchasePriceIndex = headers.findIndex(h => 
+          h.includes('prix achat') || h.includes('prix d\'achat') || h.includes('purchase price') || h.includes('cout')
+        );
+        
+        console.log('Index des colonnes:', {
+          date: dateIndex,
+          quantity: quantityIndex,
+          salePrice: salePriceIndex,
+          purchasePrice: purchasePriceIndex
+        });
         
         if (quantityIndex === -1 || salePriceIndex === -1 || purchasePriceIndex === -1) {
-          throw new Error('Colonnes manquantes pour le format commandes. Colonnes requises: quantité, prix de vente, prix d\'achat');
+          throw new Error(`Colonnes manquantes pour le format commandes.
+En-têtes trouvés: ${rawHeaders.join(', ')}
+Colonnes requises: quantity/quantité, prix de vente, prix achat
+Index trouvés: quantity=${quantityIndex}, prix vente=${salePriceIndex}, prix achat=${purchasePriceIndex}`);
         }
 
         for (let i = 1; i < lines.length; i++) {
           try {
-            const columns = lines[i].split(/[,;]/).map(c => c.trim().replace(/"/g, ''));
+            const columns = lines[i].split(';').map(c => c.trim().replace(/"/g, '').replace(/'/g, ''));
             
-            if (columns.length < headers.length) continue;
+            if (columns.length < headers.length) {
+              console.warn(`Ligne ${i + 1}: Nombre de colonnes insuffisant (${columns.length}/${headers.length})`);
+              errorCount++;
+              continue;
+            }
 
-            const quantity = parseFloat(columns[quantityIndex]?.replace(/[^\d.-]/g, '')) || 0;
-            const salePrice = parseFloat(columns[salePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
-            const purchasePrice = parseFloat(columns[purchasePriceIndex]?.replace(/[^\d.-]/g, '')) || 0;
+            // Parser les valeurs numériques en nettoyant les caractères non numériques
+            const quantityStr = columns[quantityIndex] || '0';
+            const salePriceStr = columns[salePriceIndex] || '0';
+            const purchasePriceStr = columns[purchasePriceIndex] || '0';
+            
+            const quantity = parseFloat(quantityStr.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+            const salePrice = parseFloat(salePriceStr.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+            const purchasePrice = parseFloat(purchasePriceStr.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+            
+            console.log(`Ligne ${i + 1}:`, {
+              quantity: `"${quantityStr}" → ${quantity}`,
+              salePrice: `"${salePriceStr}" → ${salePrice}`,
+              purchasePrice: `"${purchasePriceStr}" → ${purchasePrice}`
+            });
 
             if (quantity <= 0 || salePrice <= 0 || purchasePrice <= 0) {
+              console.warn(`Ligne ${i + 1}: Valeurs invalides - quantity: ${quantity}, salePrice: ${salePrice}, purchasePrice: ${purchasePrice}`);
               errorCount++;
               continue;
             }
@@ -405,12 +434,11 @@ const FinanceModule: React.FC = () => {
             // Utiliser la date de la colonne ou la date du jour
             let dateToUse;
             if (dateIndex !== -1 && columns[dateIndex]) {
-              // Gérer le format DD/MM/YYYY
-              const dateStr = columns[dateIndex];
-              let parsedDate;
+              const dateStr = columns[dateIndex].trim();
               
+              // Gérer le format français DD/MM/YYYY
+              let parsedDate;
               if (dateStr.includes('/')) {
-                // Format DD/MM/YYYY
                 const [day, month, year] = dateStr.split('/');
                 parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
               } else {
@@ -427,6 +455,8 @@ const FinanceModule: React.FC = () => {
               dateToUse = new Date().toISOString().split('T')[0];
             }
             
+            console.log(`Ligne ${i + 1}: Date utilisée: ${dateToUse}`);
+            
             if (!ordersByDate.has(dateToUse)) {
               ordersByDate.set(dateToUse, { revenue: 0, costs: 0 });
             }
@@ -437,7 +467,7 @@ const FinanceModule: React.FC = () => {
             
             successCount++;
           } catch (error) {
-            console.warn(`Erreur ligne ${i + 1}:`, error);
+            console.error(`Erreur ligne ${i + 1}:`, error, 'Contenu:', lines[i]);
             errorCount++;
           }
         }
