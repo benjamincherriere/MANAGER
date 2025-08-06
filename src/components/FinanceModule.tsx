@@ -145,10 +145,14 @@ const FinanceModule: React.FC = () => {
         .from('user_settings')
         .select('setting_value')
         .eq('setting_key', 'channel_statistics')
-        .single();
+        .maybeSingle();
 
       if (error && !error.message.includes('No rows')) {
         console.warn('Erreur chargement stats canaux:', error);
+        console.warn('Erreur lors du chargement des statistiques par canal:', error);
+        // Utiliser les données simulées si pas de données réelles
+        // Aucune donnée trouvée, utiliser les données simulées
+        setChannelData(getSimulatedChannelData());
         return;
       }
 
