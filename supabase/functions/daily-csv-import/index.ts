@@ -6,24 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-interface CSVRow {
-  channel: string;
-  order_number: string;
-  order_date: string;
-  product_ref: string;
-  product_name: string;
-  brand_name: string;
-  quantity: number;
-  unit_selling_price: number;
-  unit_purchase_price: number;
-  discount: number;
-  reward_credit: number;
-  total_sales: number;
-  total_cost: number;
-  total_margin: number;
-  margin_rate: number;
-}
-
 interface DailyData {
   date: string;
   revenue: number;
