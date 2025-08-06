@@ -16,34 +16,32 @@ function App() {
     const checkConnection = async () => {
       try {
         const { data, error } = await supabase.from('_test').select('*').limit(1);
-        if (error && error.code !== 'PGRST116' && error.code !== 'PGRST205') {
-          // PGRST116 & PGRST205 = table doesn't exist, ce qui est normal au début
-          throw error;
-        }
-      if (error) {
         if (error.code === 'PGRST116' || error.code === 'PGRST205') {
           // Expected error when table doesn't exist - connection is working
-          setSupabaseStatus('connected');
+          setConnectionStatus('connected');
           return;
         }
-        // Unexpected error
-        throw error;
-      }
-      
-      // Table exists and query succeeded
-      setSupabaseStatus('connected');
-    } catch (error: any) {
-      // Only log unexpected errors
-      if (error.code !== 'PGRST116' && error.code !== 'PGRST205') {
-        console.error('Erreur de connexion Supabase:', error);
-      }
-      if (error.code === 'PGRST116' || error.code === 'PGRST205') {
-      } catch (error) {
-        console.error('Erreur de connexion Supabase:', error);
-        setSupabaseStatus('error');
+        
+        if (error) {
+          // Unexpected error
+          throw error;
+        }
+        
+        // Table exists and query succeeded
+        setConnectionStatus('connected');
+      } catch (error: any) {
+        // Only log unexpected errors
+        if (error.code !== 'PGRST116' && error.code !== 'PGRST205') {
+          console.error('Erreur de connexion Supabase:', error);
+          setConnectionStatus('error');
+        } else {
+          // Expected error - connection is working
+          setConnectionStatus('connected');
+        }
       }
     };
-    }
+    
+    checkConnection();
   }, []);
 
   return (
