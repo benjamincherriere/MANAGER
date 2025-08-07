@@ -96,7 +96,6 @@ Deno.serve(async (req) => {
         const totalSales = parseFloat(columns[columnMap['total_sales']]) || 0;
         const totalCost = parseFloat(columns[columnMap['total_cost']]) || 0;
         const totalMargin = parseFloat(columns[columnMap['total_margin']]) || 0;
-        const marginRate = parseFloat(columns[columnMap['margin_rate']]) || 0;
 
         // Ignorer les lignes avec des données vides ou nulles
         if (!channel || !orderDate || (totalSales === 0 && totalCost === 0)) {
