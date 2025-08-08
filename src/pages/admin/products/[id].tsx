@@ -1,1 +1,5 @@
-// Page : Fiche cuvée avec onglets Qualité / Infos / Traductions
+const ProductDetail = () => {
+  return <h2>Fiche cuvée – à venir</h2>
+}
+
+export default ProductDetail
