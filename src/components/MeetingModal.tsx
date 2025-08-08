@@ -1,1 +1,1 @@
-// Composant React : RDV + invitation .ics
+// Modal RDV fournisseur avec case invitation calendrier

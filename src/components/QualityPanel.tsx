@@ -1,1 +1,1 @@
-// Composant React : panneau qualité
+// Onglet qualité dans l’admin MANAGER

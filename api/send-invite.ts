@@ -1,3 +1,1 @@
-import { Resend } from 'resend';
-
-// Code complet ici (tronqué pour démonstration)
+// API route Vercel pour envoyer les .ics via Resend

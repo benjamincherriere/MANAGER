@@ -1,6 +1,7 @@
 
-ALTER TABLE products ADD COLUMN IF NOT EXISTS live_url_fr TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS slug TEXT;
+-- Ajout des colonnes nécessaires
+ALTER TABLE products ADD COLUMN live_url_fr TEXT;
+ALTER TABLE products ADD COLUMN slug TEXT;
 
 CREATE TABLE IF NOT EXISTS content_checks (
     product_id UUID PRIMARY KEY,
