@@ -1,6 +1,6 @@
-# MANAGER – Qualité + Invitations
+# MANAGER – Qualité Live + Invitations RDV
 
-## Étapes pour déployer :
-1. Copier ce dossier dans votre repo
-2. Ajouter les variables d’environnement sur Vercel
-3. Commit & Push sur `main`
+## Déploiement
+1. Copier ce dossier dans votre projet GitHub
+2. Ajouter les variables dans Vercel
+3. Exécuter `migration.sql` dans Supabase

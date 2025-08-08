@@ -1,1 +1,1 @@
-// API route pour analyser la qualité des pages produits live
+// Code pour analyser la qualité des pages live
