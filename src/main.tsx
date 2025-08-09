@@ -7,6 +7,7 @@ import ProductsList from './pages/admin/products/index'
 import ProductDetail from './pages/admin/products/[id]'
 import MeetingsList from './pages/admin/meetings/index'
 import MeetingDetail from './pages/admin/meetings/[id]'
+import TasksList from './pages/admin/tasks/index'
 
 const App = () => (
   <BrowserRouter>
@@ -15,10 +16,13 @@ const App = () => (
       <Route path="/admin/products/:id" element={<ProductDetail />} />
       <Route path="/admin/meetings" element={<MeetingsList />} />
       <Route path="/admin/meetings/:id" element={<MeetingDetail />} />
+      <Route path="/admin/tasks" element={<TasksList />} />
       <Route path="*" element={<h1>Bienvenue dans MANAGER</h1>} />
     </Routes>
   </BrowserRouter>
 )
+
+export default App
 
 const container = document.getElementById('root')
 const root = createRoot(container!)
